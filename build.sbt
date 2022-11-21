@@ -15,8 +15,7 @@ scalacOptions ++= Seq(
 val baseSettings =
   Seq(
     version := "0.1.0-SNAPSHOT",
-    libraryDependencies ++= Seq(
-    ),
+    libraryDependencies ++= commonDeps ++ testDeps,
     scalaVersion             := "3.2.1",
     Test / parallelExecution := true,
     run / fork               := true,
@@ -28,7 +27,7 @@ lazy val eventSourcing =
     .settings(
       name := "event-sourcing",
       libraryDependencies ++=
-        commonDeps ++ fs2Deps ++ serializerDeps ++ doobieDeps
+        fs2Deps ++ serializerDeps ++ doobieDeps
     )
 
 val root =

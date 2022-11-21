@@ -25,12 +25,10 @@ class DoobieEventRepository(
 
   override val writer: EventWriter = { response =>
     transactor.use { xa =>
-      val name = response.id.name
-      val id   = response.id.id
-      val now  = Instant.now()
-      val records =
-        response.events
-          .map(e => EventRecord(name, id, e.version, now, e.event))
+      val name    = response.id.name
+      val id      = response.id.id
+      val now     = Instant.now()
+      val records = response.events.map(e => EventRecord(name, id, e.version, now, e.event))
 
       import doobie.postgres._
       Update[EventRecord](INSERT_EVENT)
@@ -65,7 +63,7 @@ object DoobieEventRepository {
       id VARCHAR(127) NOT NULL,
       ver BIGINT NOT NULL,
       timestamp TIMESTAMP NOT NULL,
-      event VARCHAR(255) NOT NULL,
+      event BINARY NOT NULL,
       PRIMARY KEY (name, id, ver)
     )"""
 
@@ -80,7 +78,7 @@ object DoobieEventRepository {
     id: ResourceIdentifier,
     ver: Version,
     timestamp: Instant,
-    event: SerializedEvent
+    event: ByteArray
   )
 
   // val createResourcesTable =

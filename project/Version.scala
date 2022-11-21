@@ -17,6 +17,12 @@ object Version {
       "com.typesafe.scala-logging" %% "scala-logging"   % "3.9.5",
     )
 
+  lazy val testDeps =
+    Seq(
+      "org.scalameta" %% "munit"               % "0.7.29" % Test,
+      "org.typelevel" %% "munit-cats-effect-3" % "1.0.7"  % Test,
+    )
+
   lazy val fs2Deps =
     Seq(
       "org.typelevel" %% "cats-core"            % "2.8.0" withSources () withJavadoc (),

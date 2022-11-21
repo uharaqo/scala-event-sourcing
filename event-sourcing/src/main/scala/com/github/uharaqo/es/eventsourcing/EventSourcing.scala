@@ -15,16 +15,16 @@ object EventSourcing {
   type Fqcn               = String
 
   case class ResourceId(name: ResourceName, id: ResourceIdentifier)
-  case class VersionedEvent(version: Version, event: SerializedEvent)
+  case class VersionedEvent(version: Version, event: ByteArray)
   case class VersionedState[S](version: Version, state: S)
 
   // serializers
-  type RawCommand      = String
-  type SerializedEvent = String
+  type RawCommand = String
+  type ByteArray  = Array[Byte]
 
   type CommandDeserializer[C] = RawCommand => IO[C]
-  type EventSerializer[E]     = E => IO[SerializedEvent]
-  type EventDeserializer[E]   = SerializedEvent => IO[E]
+  type EventSerializer[E]     = E => IO[ByteArray]
+  type EventDeserializer[E]   = ByteArray => IO[E]
 
   // command handler
   type CommandHandler[S, C, E] = (S, C) => IO[Seq[E]]

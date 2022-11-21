@@ -1,9 +1,11 @@
-package com.github.uharaqo.es.eventsourcing
+package com.github.uharaqo.es
 
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import com.github.uharaqo.es.io.json.JsonCodec
+import java.nio.charset.StandardCharsets
+import com.github.uharaqo.es.io.json.CommandDecoder
 
 object UserResource {
   sealed trait UserCommand
@@ -27,8 +29,8 @@ object UserResource {
     IO.pure(events)
   }
 
-  import io.circe.Decoder, io.circe.syntax.*, io.circe.generic.auto.*, cats.syntax.functor.*
-  private val cDecoder = JsonCodec.Builder(List.empty[Decoder[UserCommand]]).witha[RegisterUser].build
+  import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
+  private val cDecoder = CommandDecoder.forCommand[UserCommand].withCommand[RegisterUser].build
   private val eCodec   = JsonCodec[UserEvent]()
 
   def newUserCommandProcessor(eventReader: EventReader): CommandProcessor[User, UserCommand, UserEvent] =
@@ -36,7 +38,7 @@ object UserResource {
       User(""),
       commandHandler,
       eventHandler,
-      cDecoder(_),
+      c => cDecoder(c.getBytes(StandardCharsets.UTF_8)),
       eCodec.encode(_),
       eCodec.decode(_),
       eventReader,
