@@ -63,7 +63,7 @@ object DoobieEventRepository {
       id VARCHAR(127) NOT NULL,
       ver BIGINT NOT NULL,
       timestamp TIMESTAMP NOT NULL,
-      event BINARY NOT NULL,
+      event VARCHAR(255) NOT NULL,
       PRIMARY KEY (name, id, ver)
     )"""
 
@@ -78,7 +78,7 @@ object DoobieEventRepository {
     id: ResourceIdentifier,
     ver: Version,
     timestamp: Instant,
-    event: ByteArray
+    event: Serialized
   )
 
   // val createResourcesTable =

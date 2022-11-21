@@ -10,6 +10,7 @@ object Version {
       // util
       "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2",
       "com.typesafe"            % "config"             % "1.4.2",
+      // "org.typelevel"          %% "shapeless3-deriving" % "3.2.0",
 
       // logging
       "org.slf4j"                   % "slf4j-api"       % "2.0.3",
@@ -40,12 +41,10 @@ object Version {
 
   lazy val doobieDeps =
     Seq(
-      // doobie
-      "org.tpolecat" %% "doobie-core"   % doobieVersion,
-      "org.tpolecat" %% "doobie-hikari" % doobieVersion,
-      // postgres
-      "org.postgresql" % "postgresql"      % "42.5.0",
+      "org.tpolecat"  %% "doobie-core"     % doobieVersion,
+      "org.tpolecat"  %% "doobie-hikari"   % doobieVersion,
       "org.tpolecat"  %% "doobie-postgres" % doobieVersion,
       "org.tpolecat"  %% "doobie-h2"       % doobieVersion,
+      "org.postgresql" % "postgresql"      % "42.5.0",
     )
 }
