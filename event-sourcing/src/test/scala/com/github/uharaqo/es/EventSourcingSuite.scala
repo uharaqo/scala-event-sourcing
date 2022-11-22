@@ -11,27 +11,26 @@ import munit.*
 
 class EventSourcingSuite extends CatsEffectSuite {
 
-  private val registerUser = classOf[RegisterUser].getCanonicalName()
-  private val addPoint     = classOf[AddPoint].getCanonicalName()
-  // private val sendPoint    = classOf[SendPoint].getCanonicalName()
+  private val registerUser = classOf[RegisterUser].getCanonicalName().nn
+  private val addPoint     = classOf[AddPoint].getCanonicalName().nn
+  private val sendPoint    = classOf[SendPoint].getCanonicalName().nn
 
-  private var repo: DoobieEventRepository   = null
-  private var dispatcher: CommandDispatcher = null
+  private var repo: DoobieEventRepository   = _
+  private var dispatcher: CommandDispatcher = _
 
   override def beforeAll(): Unit = {
     val transactor = H2TransactorFactory.create()
     repo = DoobieEventRepository(transactor)
 
-    dispatcher = getCommandRegistry(UserResource.newUserCommandProcessor(repo)) match {
-      case Right(r) => CommandDispatcher(r)
-      case Left(e)  => throw e
-    }
+    val userResource    = UserResource(repo)
+    val processor       = userResource.commandProcessor
+    val commandRegistry = CommandRegistry.from(processor, commandDeserializers)
+    dispatcher = CommandDispatcher(commandRegistry)
   }
 
   test("user") {
-
-    val id1 = ResourceId("user", "i1")
-    val id2 = ResourceId("user", "i2")
+    val id1 = ResourceId(UserResource.info.name, "i1")
+    val id2 = ResourceId(UserResource.info.name, "i2")
     val requests = List(
       CommandRequest(id1, registerUser, """{"name": "Alice"}"""),
       CommandRequest(id1, addPoint, """{"point": 30}"""),
@@ -39,10 +38,9 @@ class EventSourcingSuite extends CatsEffectSuite {
       CommandRequest(id2, registerUser, """{"name": "Bob"}"""),
       // TODO: error test
       // CommandRequest(id2, registerUser, """{"name": "Bob"}"""),
-
-      // TODO: how to handle this?
-      // CommandRequest(id1, sendPoint, """{"recipientId": "i2", "point": 10}"""),
+      // TODO: error test
       // CommandRequest(id1, sendPoint, """{"recipientId": "i2", "point": 9999}"""),
+      CommandRequest(id1, sendPoint, """{"recipientId": "i2", "point": 10}"""),
     )
 
     val result = for {
@@ -69,6 +67,7 @@ class EventSourcingSuite extends CatsEffectSuite {
             """{"UserRegistered":{"name":"Alice"}}""",
             """{"PointAdded":{"point":30}}""",
             """{"PointAdded":{"point":80}}""",
+            """{"PointSent":{"recipientId":"i2","point":10}}""",
           )
         )
 
@@ -77,6 +76,7 @@ class EventSourcingSuite extends CatsEffectSuite {
           rs2.map(_.event),
           Vector(
             """{"UserRegistered":{"name":"Bob"}}""",
+            """{"PointReceived":{"senderId":"i1","point":10}}""",
           )
         )
     }

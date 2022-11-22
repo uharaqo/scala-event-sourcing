@@ -1,6 +1,6 @@
 import sbt._
 
-object Version {
+object Dependencies {
   val circeVersion  = "0.14.3"
   val fs2Version    = "3.3.0"
   val doobieVersion = "1.0.0-RC2"

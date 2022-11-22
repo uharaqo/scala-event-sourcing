@@ -1,15 +1,16 @@
-import Version._
+import Dependencies._
 
 scalaVersion := "3.2.1"
 organization := "com.github.uharaqo"
 name         := "scala-event-sourcing"
 
-scalacOptions ++= Seq(
+val options = Seq(
   "-feature",
   "-deprecation",
   "-unchecked",
   "-language:postfixOps",
   "-language:higherKinds",
+  // "-Yexplicit-nulls",
 )
 
 val baseSettings =
@@ -17,6 +18,7 @@ val baseSettings =
     version := "0.1.0-SNAPSHOT",
     libraryDependencies ++= commonDeps ++ testDeps,
     scalaVersion             := "3.2.1",
+    scalacOptions            := options,
     Test / parallelExecution := true,
     run / fork               := true,
   )

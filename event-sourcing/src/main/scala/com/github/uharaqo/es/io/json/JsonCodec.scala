@@ -20,14 +20,14 @@ class DefaultJsonCodec[T](
 
 object JsonCodec {
 
-  def apply[T]()(implicit encoder: Encoder[T], decoder: Decoder[T]): JsonCodec[T] =
+  def apply[T]()(using encoder: Encoder[T], decoder: Decoder[T]): JsonCodec[T] =
     new DefaultJsonCodec[T](getEncoder[T](), getDecoder[T]())
 
-  def getEncoder[T]()(implicit encoder: Encoder[T]): T => IO[Serialized] = { t =>
+  def getEncoder[T]()(using encoder: Encoder[T]): T => IO[Serialized] = { t =>
     IO(encoder(t).noSpaces)
   }
 
-  def getDecoder[T]()(implicit decoder: Decoder[T]): Serialized => IO[T] =
+  def getDecoder[T]()(using decoder: Decoder[T]): Serialized => IO[T] =
     (json: Serialized) =>
       IO.fromEither(
         io.circe.parser

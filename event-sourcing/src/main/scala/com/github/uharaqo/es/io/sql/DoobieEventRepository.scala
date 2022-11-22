@@ -3,6 +3,7 @@ package com.github.uharaqo.es.io.sql
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
+import com.github.uharaqo.es.eventprojection.ProjectionRepository
 import doobie.*
 import doobie.implicits.*
 import doobie.implicits.javasql.*
@@ -10,11 +11,10 @@ import doobie.implicits.javatimedrivernative.*
 import doobie.util.fragment.Fragment
 import fs2.Stream
 
-import java.time.Instant
-
 class DoobieEventRepository(
   private val transactor: Resource[IO, Transactor[IO]]
-) extends EventRepository {
+) extends EventRepository
+    with ProjectionRepository {
 
   import DoobieEventRepository.*
 
@@ -23,15 +23,12 @@ class DoobieEventRepository(
       Seq(CREATE_EVENTS_TABLE).traverse(_.update.run).transact(xa).void
     }
 
-  override val writer: EventWriter = { response =>
+  override val writer: EventWriter = { responses =>
     transactor.use { xa =>
-      val name    = response.id.name
-      val id      = response.id.id
-      val now     = Instant.now()
-      val records = response.events.map(e => EventRecord(name, id, e.version, now, e.event))
+      val records = responses.map(e => (e.id.name, e.id.id, e.event.version, e.event.event))
 
       import doobie.postgres._
-      Update[EventRecord](INSERT_EVENT)
+      Update[(ResourceName, ResourceIdentifier, Version, Serialized)](INSERT_EVENT)
         .updateMany(records)
         .transact(xa)
         // Return false on a PK conflict
@@ -50,6 +47,15 @@ class DoobieEventRepository(
     } yield stream)
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
   }
+
+  override def load(resourceName: ResourceName, verGt: Version): Stream[IO, (ResourceIdentifier, Version, Serialized)] =
+    for {
+      xa <- Stream.resource(transactor)
+      stream <- SELECT_EVENTS_BY_RESOURCE(resourceName, verGt)
+        .query[(ResourceIdentifier, Version, Serialized)]
+        .stream
+        .transact(xa)
+    } yield stream
 }
 
 object DoobieEventRepository {
@@ -62,24 +68,18 @@ object DoobieEventRepository {
       name VARCHAR(15) NOT NULL,
       id VARCHAR(127) NOT NULL,
       ver BIGINT NOT NULL,
-      timestamp TIMESTAMP NOT NULL,
+      timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       event VARCHAR(255) NOT NULL,
       PRIMARY KEY (name, id, ver)
     )"""
 
-  val INSERT_EVENT = "INSERT INTO events (name, id, ver, timestamp, event) VALUES (?, ?, ?, ?, ?)"
+  val INSERT_EVENT = "INSERT INTO events (name, id, ver, event) VALUES (?, ?, ?, ?)"
   val SELECT_EVENTS =
     (resourceId: ResourceId) =>
-      sql"""SELECT ver, event FROM events WHERE name = ${resourceId.name} AND id = ${resourceId.id}
-          ORDER BY ver"""
-
-  case class EventRecord(
-    name: ResourceName,
-    id: ResourceIdentifier,
-    ver: Version,
-    timestamp: Instant,
-    event: Serialized
-  )
+      sql"""SELECT ver, event FROM events WHERE name = ${resourceId.name} AND id = ${resourceId.id} ORDER BY ver"""
+  val SELECT_EVENTS_BY_RESOURCE =
+    (resourceName: ResourceName, verGt: Long) =>
+      sql"""SELECT id, ver, event FROM events WHERE name = ${resourceName} AND ver > ${verGt} ORDER BY ver"""
 
   // val createResourcesTable =
   //   sql"""CREATE TABLE resources (

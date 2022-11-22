@@ -5,19 +5,58 @@ import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import com.github.uharaqo.es.io.json.JsonCodec
 
+class UserResource(private val eventRepository: EventRepository) {
+  import UserResource.*
+
+  private val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
+    if (s == User.EMPTY && !c.isInstanceOf[RegisterUser]) {
+      ctx.fail(IllegalStateException("User not found"))
+    }
+
+    c match {
+      case RegisterUser(name) =>
+        s match
+          case User.EMPTY => ctx.save(UserRegistered(name))
+          case _          => ctx.fail(IllegalStateException("Already registered"))
+
+      case AddPoint(point) =>
+        ctx.save(PointAdded(point))
+
+      case SendPoint(recipientId, point) =>
+        if (s.point >= point) {
+          val senderId = ctx.id.id
+          for {
+            sent <- ctx.save(PointSent(recipientId, point))
+            received <- ctx.externalEvents(UserResource.info, recipientId) { (s, ctx) =>
+              ctx.save(PointReceived(senderId, point))
+            }
+          } yield sent ++ received
+        } else ctx.fail(IllegalStateException("Point Shortage"))
+    }
+  }
+
+  val commandProcessor: CommandProcessor[User, UserCommand, UserEvent] =
+    CommandProcessor(
+      info,
+      debug(commandHandler),
+      debug(StateProvider(eventRepository.reader)),
+      eventRepository,
+    )
+}
+
 object UserResource {
   // commands
   sealed trait UserCommand
-  case class RegisterUser(name: String) extends UserCommand
-  case class AddPoint(point: Int)       extends UserCommand
-  // case class SendPoint(recipientId: String, point: Int) extends UserCommand
+  case class RegisterUser(name: String)                 extends UserCommand
+  case class AddPoint(point: Int)                       extends UserCommand
+  case class SendPoint(recipientId: String, point: Int) extends UserCommand
 
   // events
   sealed trait UserEvent
-  case class UserRegistered(name: String) extends UserEvent
-  case class PointAdded(point: Int)       extends UserEvent
-  // case class PointSent(recipientId: String, point: Int)  extends UserEvent
-  // case class PointReceived(senderId: String, point: Int) extends UserEvent
+  case class UserRegistered(name: String)                extends UserEvent
+  case class PointAdded(point: Int)                      extends UserEvent
+  case class PointSent(recipientId: String, point: Int)  extends UserEvent
+  case class PointReceived(senderId: String, point: Int) extends UserEvent
 
   // state
   case class User(name: String, point: Int)
@@ -25,37 +64,14 @@ object UserResource {
     val EMPTY = User("", 0)
   }
 
-  def getCommandRegistry(
-    commandProcessor: CommandProcessor[_, UserCommand, _]
-  ): Either[EsException, CommandRegistry] = {
+  val commandDeserializers: Map[Fqcn, CommandDeserializer[UserCommand]] = {
     import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
-    for {
-      b <- CommandRegistry.forProcessor(commandProcessor)
-      // TODO: maybe these children can be listed up by a macro
-      b <- b.register(classOf[RegisterUser])
-      b <- b.register(classOf[AddPoint])
-      // b <- b.register(classOf[SendPoint])
-    } yield b.build
-  }
-
-  private val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c) =>
-    if (s == User.EMPTY && !c.isInstanceOf[RegisterUser]) {
-      throw IllegalStateException("User not found")
-    }
-
-    IO(
-      c match {
-        case RegisterUser(name) =>
-          s match
-            case User.EMPTY => Seq(UserRegistered(name))
-            case _          => throw IllegalStateException("Already registered")
-        case AddPoint(point) => Seq(PointAdded(point))
-        // case SendPoint(recipientId, point) =>
-        //   if (s.point >= point)
-        //     Seq(PointSent(recipientId, point), PointReceived(s.name, point))
-        //   else
-        //     throw IllegalStateException("Point Shortage")
-      }
+    def deserializer[C](c: Class[C])(using decoder: Decoder[C]): (Fqcn, CommandDeserializer[C]) =
+      (c.getCanonicalName().nn, JsonCodec.getDecoder())
+    Map(
+      deserializer(classOf[RegisterUser]),
+      deserializer(classOf[AddPoint]),
+      deserializer(classOf[SendPoint]),
     )
   }
 
@@ -64,30 +80,40 @@ object UserResource {
       case UserRegistered(name) =>
         s match
           case User.EMPTY => User(name, 0)
-          case _          => s // This shouoldn't happen
+          case _          => ??? // This shouoldn't happen
 
       case PointAdded(point) =>
         s.copy(point = s.point + point)
 
-      // case PointSent(recipientId, point) =>
-      //   s.copy(point = s.point - point)
+      case PointSent(recipientId, point) =>
+        s.copy(point = s.point - point)
 
-      // case PointReceived(senderId, point) =>
-      //   s
+      case PointReceived(senderId, point) =>
+        s.copy(point = s.point + point)
     }
   }
 
-  import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
-  private val eCodec = JsonCodec[UserEvent]()
+  val info: ResourceInfo[User, UserEvent] = {
+    import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
+    val eCodec = JsonCodec[UserEvent]()
 
-  def newUserCommandProcessor(eventRepository: EventRepository): CommandProcessor[User, UserCommand, UserEvent] =
-    createCommandProcessor(
-      User.EMPTY,
-      commandHandler,
-      eventHandler,
-      eCodec.encode(_),
-      eCodec.decode(_),
-      eventRepository.reader,
-      eventRepository.writer,
-    )
+    ResourceInfo("user", User.EMPTY, eCodec.encode(_), eCodec.decode(_), eventHandler)
+  }
+
+  private def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
+    (s, c, ctx) =>
+      for {
+        _ <- IO.println(s"Command: $c")
+        r <- commandHandler(s, c, ctx)
+        _ <- IO.println(s"Response: $r")
+      } yield r
+
+  private def debug(stateProvider: StateProvider): StateProvider =
+    new StateProvider {
+      override def get[S, E](info: ResourceInfo[S, E], id: ResourceIdentifier): IO[VersionedState[S]] =
+        for {
+          r <- stateProvider.get(info, id)
+          _ <- IO.println(s"State: $r")
+        } yield r
+    }
 }
