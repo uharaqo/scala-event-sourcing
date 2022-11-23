@@ -3,7 +3,7 @@ package com.github.uharaqo.es.io.sql
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import com.github.uharaqo.es.eventprojection.ProjectionRepository
+import com.github.uharaqo.es.eventprojection.EventProjections.*
 import doobie.*
 import doobie.implicits.*
 import doobie.implicits.javasql.*
@@ -41,21 +41,21 @@ class DoobieEventRepository(
   }
 
   override val reader: EventReader = { resourceId =>
-    (for {
+    (for
       xa     <- Stream.resource(transactor)
       stream <- SELECT_EVENTS(resourceId).query[VersionedEvent].stream.transact(xa)
-    } yield stream)
+    yield stream)
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
   }
 
-  override def load(resourceName: ResourceName, verGt: Version): Stream[IO, (ResourceIdentifier, Version, Serialized)] =
-    for {
+  override def load(resourceName: ResourceName, verGt: Version): Stream[IO, SerializedEventRecord] =
+    for
       xa <- Stream.resource(transactor)
       stream <- SELECT_EVENTS_BY_RESOURCE(resourceName, verGt)
-        .query[(ResourceIdentifier, Version, Serialized)]
+        .query[SerializedEventRecord]
         .stream
         .transact(xa)
-    } yield stream
+    yield stream
 }
 
 object DoobieEventRepository {

@@ -1,7 +1,6 @@
 import sbt._
 
 object Dependencies {
-  val circeVersion  = "0.14.3"
   val fs2Version    = "3.3.0"
   val doobieVersion = "1.0.0-RC2"
 
@@ -34,12 +33,8 @@ object Dependencies {
 
   lazy val serializerDeps =
     Seq(
-      // "io.circe"                              %% "circe-core"          % circeVersion,
-      // "io.circe"                              %% "circe-generic"       % circeVersion,
-      // "io.circe"                              %% "circe-parser"        % circeVersion,
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % "2.17.9",
-      // Use the "provided" scope instead when the "compile-internal" scope is not supported
-      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % "2.17.9" % "provided",
+      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % "2.17.9" % "provided", // Use "provided" if "compile-internal" is not supported
     )
 
   lazy val doobieDeps =

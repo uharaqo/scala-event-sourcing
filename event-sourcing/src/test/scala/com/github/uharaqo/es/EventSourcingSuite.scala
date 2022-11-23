@@ -5,32 +5,35 @@ import cats.implicits.*
 import cats.syntax.all.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import com.github.uharaqo.es.io.sql.*
-import com.github.uharaqo.es.UserResource
-import com.github.uharaqo.es.UserResource.*
 import munit.*
 
 class EventSourcingSuite extends CatsEffectSuite {
+  import com.github.uharaqo.es.UserResource.*
 
-  private val id1 = ResourceId(UserResource.info.name, "id1")
-  private val id2 = ResourceId(UserResource.info.name, "id2")
+  private val id1 = ResourceId(info.name, "id1")
+  private val id2 = ResourceId(info.name, "id2")
 
-  private val transactor                    = H2TransactorFactory.create()
-  private val repo: DoobieEventRepository   = DoobieEventRepository(transactor)
-  private val userResource                  = UserResource(repo)
-  private val processor                     = userResource.commandProcessor
+  private val transactor                  = H2TransactorFactory.create()
+  private val repo: DoobieEventRepository = DoobieEventRepository(transactor)
+
+  private val userResource = UserResource(repo)
+  private val processor    = userResource.commandProcessor
+
   private val commandRegistry               = CommandRegistry.from(processor, commandDeserializers)
   private val dispatcher: CommandDispatcher = CommandDispatcher(commandRegistry)
 
   private val tester: CommandTester[User, UserCommand, UserEvent] =
-    CommandTester(UserResource.info, processor, commandDeserializers, StateProvider(repo.reader))
+    CommandTester(
+      info,
+      commandSerializer,
+      commandDeserializers,
+      processor,
+      StateProvider(repo.reader)
+    )
   import tester.*
 
-  import com.github.plokhotnyuk.jsoniter_scala.macros._
-  import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
-  given codec: JsonValueCodec[UserCommand] = JsonCodecMaker.make
-
   test("user") {
-    for {
+    for
       // init DB
       _ <- repo.initTables()
 
@@ -65,6 +68,6 @@ class EventSourcingSuite extends CatsEffectSuite {
           (id1.id, User("Alice", 100)),
           (id2.id, User("Bob", 10))
         )
-    } yield ()
+    yield ()
   }
 }

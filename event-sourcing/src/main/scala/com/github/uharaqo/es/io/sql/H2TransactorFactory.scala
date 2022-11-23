@@ -9,7 +9,7 @@ import doobie.util.transactor.Transactor
 object H2TransactorFactory {
 
   def create(): Resource[IO, Transactor[IO]] =
-    for {
+    for
       ce <- ExecutionContexts.fixedThreadPool[IO](32)
       xa <- H2Transactor.newH2Transactor[IO](
         "jdbc:h2:mem:test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
@@ -17,5 +17,5 @@ object H2TransactorFactory {
         "",
         ce
       )
-    } yield xa
+    yield xa
 }
