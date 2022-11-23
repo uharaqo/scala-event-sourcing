@@ -65,13 +65,16 @@ object UserResource {
   }
 
   val commandDeserializers: Map[Fqcn, CommandDeserializer[UserCommand]] = {
-    import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
-    def deserializer[C](c: Class[C])(using decoder: Decoder[C]): (Fqcn, CommandDeserializer[C]) =
-      (c.getCanonicalName().nn, JsonCodec.getDecoder())
+    import com.github.plokhotnyuk.jsoniter_scala.macros._
+    import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
+    // import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
+    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, CommandDeserializer[C]) =
+      (c.getCanonicalName().nn, JsonCodec[C]().decode)
+      // (c.getCanonicalName().nn, JsonCodec.getDecoder())
     Map(
-      deserializer(classOf[RegisterUser]),
-      deserializer(classOf[AddPoint]),
-      deserializer(classOf[SendPoint]),
+      deserializer(classOf[RegisterUser])(JsonCodecMaker.make),
+      deserializer(classOf[AddPoint])(JsonCodecMaker.make),
+      deserializer(classOf[SendPoint])(JsonCodecMaker.make),
     )
   }
 
@@ -94,8 +97,13 @@ object UserResource {
   }
 
   val info: ResourceInfo[User, UserEvent] = {
-    import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
-    val eCodec = JsonCodec[UserEvent]()
+    import com.github.plokhotnyuk.jsoniter_scala.macros._
+    import com.github.plokhotnyuk.jsoniter_scala.core._
+    implicit val codec: JsonValueCodec[UserEvent] = JsonCodecMaker.make
+
+    // import _root_.io.circe.Decoder, _root_.io.circe.generic.auto.*
+    // val eCodec = JsonCodec[UserEvent]()
+    val eCodec = JsonCodec()
 
     ResourceInfo("user", User.EMPTY, eCodec.encode(_), eCodec.decode(_), eventHandler)
   }

@@ -11,74 +11,60 @@ import munit.*
 
 class EventSourcingSuite extends CatsEffectSuite {
 
-  private val registerUser = classOf[RegisterUser].getCanonicalName().nn
-  private val addPoint     = classOf[AddPoint].getCanonicalName().nn
-  private val sendPoint    = classOf[SendPoint].getCanonicalName().nn
+  private val id1 = ResourceId(UserResource.info.name, "id1")
+  private val id2 = ResourceId(UserResource.info.name, "id2")
 
-  private var repo: DoobieEventRepository   = _
-  private var dispatcher: CommandDispatcher = _
+  private val transactor                    = H2TransactorFactory.create()
+  private val repo: DoobieEventRepository   = DoobieEventRepository(transactor)
+  private val userResource                  = UserResource(repo)
+  private val processor                     = userResource.commandProcessor
+  private val commandRegistry               = CommandRegistry.from(processor, commandDeserializers)
+  private val dispatcher: CommandDispatcher = CommandDispatcher(commandRegistry)
 
-  override def beforeAll(): Unit = {
-    val transactor = H2TransactorFactory.create()
-    repo = DoobieEventRepository(transactor)
+  private val tester: CommandTester[User, UserCommand, UserEvent] =
+    CommandTester(UserResource.info, processor, commandDeserializers, StateProvider(repo.reader))
+  import tester.*
 
-    val userResource    = UserResource(repo)
-    val processor       = userResource.commandProcessor
-    val commandRegistry = CommandRegistry.from(processor, commandDeserializers)
-    dispatcher = CommandDispatcher(commandRegistry)
-  }
+  import com.github.plokhotnyuk.jsoniter_scala.macros._
+  import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
+  given codec: JsonValueCodec[UserCommand] = JsonCodecMaker.make
 
   test("user") {
-    val id1 = ResourceId(UserResource.info.name, "i1")
-    val id2 = ResourceId(UserResource.info.name, "i2")
-    val requests = List(
-      CommandRequest(id1, registerUser, """{"name": "Alice"}"""),
-      CommandRequest(id1, addPoint, """{"point": 30}"""),
-      CommandRequest(id1, addPoint, """{"point": 80}"""),
-      CommandRequest(id2, registerUser, """{"name": "Bob"}"""),
-      // TODO: error test
-      // CommandRequest(id2, registerUser, """{"name": "Bob"}"""),
-      // TODO: error test
-      // CommandRequest(id1, sendPoint, """{"recipientId": "i2", "point": 9999}"""),
-      CommandRequest(id1, sendPoint, """{"recipientId": "i2", "point": 10}"""),
-    )
-
-    val result = for {
+    for {
       // init DB
       _ <- repo.initTables()
 
-      // run commands
-      r <- requests.traverse(dispatcher)
-      _ <- IO(r.foreach(println))
+      _ <- send(id1, RegisterUser("Alice"))
+        .events(UserRegistered("Alice"))
+        .states((id1.id, User("Alice", 0)))
 
-      // read records in DB
-      rs1 <- repo.reader(id1).compile.toVector
-      _   <- IO.println(rs1)
-      rs2 <- repo.reader(id2).compile.toVector
-      _   <- IO.println(rs2)
-    } yield (rs1, rs2)
+      _ <- send(id1, RegisterUser("Alice"))
+        .failsBecause("Already registered")
 
-    result.map {
-      case (rs1, rs2) =>
-        assertEquals(rs1.map(_.version), Seq.range(1L, rs1.size + 1L).toVector)
-        assertEquals(
-          rs1.map(_.event),
-          Vector(
-            """{"UserRegistered":{"name":"Alice"}}""",
-            """{"PointAdded":{"point":30}}""",
-            """{"PointAdded":{"point":80}}""",
-            """{"PointSent":{"recipientId":"i2","point":10}}""",
-          )
+      _ <- send(id1, AddPoint(30))
+        .events(PointAdded(30))
+        .states((id1.id, User("Alice", 30)))
+
+      _ <- send(id1, AddPoint(80))
+        .events(PointAdded(80))
+        .states((id1.id, User("Alice", 110)))
+
+      _ <- send(id2, RegisterUser("Bob"))
+        .events(UserRegistered("Bob"))
+        .states((id2.id, User("Bob", 0)))
+
+      _ <- send(id1, SendPoint(id2.id, 9999))
+        .failsBecause("Point Shortage")
+
+      _ <- send(id1, SendPoint(id2.id, 10))
+        .events(
+          PointSent(id2.id, 10),
+          PointReceived(id1.id, 10)
         )
-
-        assertEquals(rs2.map(_.version), Seq.range(1L, rs2.size + 1L).toVector)
-        assertEquals(
-          rs2.map(_.event),
-          Vector(
-            """{"UserRegistered":{"name":"Bob"}}""",
-            """{"PointReceived":{"senderId":"i1","point":10}}""",
-          )
+        .states(
+          (id1.id, User("Alice", 100)),
+          (id2.id, User("Bob", 10))
         )
-    }
+    } yield ()
   }
 }
