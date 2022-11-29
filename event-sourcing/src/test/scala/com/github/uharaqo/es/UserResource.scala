@@ -5,51 +5,9 @@ import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import com.github.uharaqo.es.io.json.JsonCodec
 
-class UserResource(private val eventRepository: EventRepository) {
+object UserResource {
   import UserResource.*
 
-  private val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
-    import ctx.*
-    s match
-      case User.EMPTY =>
-        c match
-          case RegisterUser(name) =>
-            save(UserRegistered(name))
-
-          case _ =>
-            fail(IllegalStateException("User not found"))
-
-      case User(name, point) =>
-        c match
-          case RegisterUser(name) =>
-            fail(IllegalStateException("Already registered"))
-
-          case AddPoint(point) =>
-            save(PointAdded(point))
-
-          case SendPoint(recipientId, point) =>
-            if (s.point < point) //
-              fail(IllegalStateException("Point Shortage"))
-            else
-              val senderId = ctx.id.id
-              for
-                sent <- save(PointSent(recipientId, point))
-                received <- withState(UserResource.info, recipientId) { (s, ctx2) =>
-                  ctx2.save(PointReceived(senderId, point))
-                }
-              yield sent ++ received
-  }
-
-  val commandProcessor: CommandProcessor[User, UserCommand, UserEvent] =
-    CommandProcessor(
-      info,
-      debug(commandHandler),
-      debug(StateProvider(eventRepository.reader)),
-      eventRepository,
-    )
-}
-
-object UserResource {
   // commands
   sealed trait UserCommand
   case class RegisterUser(name: String)                 extends UserCommand
@@ -98,6 +56,41 @@ object UserResource {
         s.copy(point = s.point + point)
   }
 
+  private val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
+    import ctx.*
+    s match
+      case User.EMPTY =>
+        c match
+          case RegisterUser(name) =>
+            save(UserRegistered(name))
+
+          case _ =>
+            fail(IllegalStateException("User not found"))
+
+      case User(name, point) =>
+        c match
+          case RegisterUser(_) =>
+            fail(IllegalStateException("Already registered"))
+
+          case AddPoint(point) =>
+            save(PointAdded(point))
+
+          case SendPoint(recipientId, point) =>
+            if (s.point < point) //
+              fail(IllegalStateException("Point Shortage"))
+            else
+              val senderId = ctx.id.id
+              for
+                sent <- save(PointSent(recipientId, point))
+                received <- withState(UserResource.info, recipientId) { (s, ctx2) =>
+                  if (s == User.EMPTY)
+                    ctx.fail(IllegalStateException("User not found"))
+                  else
+                    ctx2.save(PointReceived(senderId, point))
+                }
+              yield sent ++ received
+  }
+
   val info: ResourceInfo[User, UserEvent] = {
     import com.github.plokhotnyuk.jsoniter_scala.macros._
     import com.github.plokhotnyuk.jsoniter_scala.core._
@@ -107,20 +100,14 @@ object UserResource {
     ResourceInfo("user", User.EMPTY, eCodec.encode(_), eCodec.decode(_), eventHandler)
   }
 
-  private def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
-    (s, c, ctx) =>
-      for
-        _ <- IO.println(s"Command: $c")
-        r <- commandHandler(s, c, ctx)
-        _ <- IO.println(s"Response: $r")
-      yield r
+  def newCommandProcessor(repo: EventRepository): CommandProcessor[User, UserCommand, UserEvent] =
+    CommandProcessor(
+      info,
+      debug(commandHandler),
+      debug(StateProvider(repo.reader)),
+      repo,
+    )
 
-  private def debug(stateProvider: StateProvider): StateProvider =
-    new StateProvider {
-      override def get[S, E](info: ResourceInfo[S, E], id: ResourceIdentifier): IO[VersionedState[S]] =
-        for
-          s <- stateProvider.get(info, id)
-          _ <- IO.println(s"State: $s")
-        yield s
-    }
+  def newCommandRegistry(repo: EventRepository): CommandRegistry =
+    CommandRegistry.from(newCommandProcessor(repo), commandDeserializers)
 }

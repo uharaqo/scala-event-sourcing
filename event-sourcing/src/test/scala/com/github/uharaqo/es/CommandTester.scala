@@ -13,17 +13,14 @@ import com.github.plokhotnyuk.jsoniter_scala.core.*
 class CommandTester[S, C, E](
   private val info: ResourceInfo[S, E],
   commandSerializer: JsonValueCodec[C],
-  commandDeserializers: Map[Fqcn, CommandDeserializer[C]],
-  processor: CommandProcessor[S, C, E],
+  private val dispatcher: CommandDispatcher,
   private val stateProvider: StateProvider,
 ) {
-  private val commandRegistry = CommandRegistry.from(processor, commandDeserializers)
-  private val dispatcher      = CommandDispatcher(commandRegistry)
 
-  def send(resourceId: ResourceId, command: C): IO[Seq[CommandResponse]] =
+  def send(resourceId: ResourceIdentifier, command: C): IO[Seq[CommandResponse]] =
     send(
       CommandRequest(
-        resourceId,
+        ResourceId(info.name, resourceId),
         command.getClass().getCanonicalName(),
         String(writeToArray(command)(commandSerializer), UTF_8)
       )
@@ -49,11 +46,13 @@ class CommandTester[S, C, E](
         v
     }
 
-    def failsBecause(message: String): IO[Unit] = {
-      import unsafe.implicits.*
-      val e = intercept[EsException.CommandHandlerFailure](io.unsafeRunSync())
-      assertEquals(e.getCause().getMessage(), message)
-      IO.unit
-    }
+    def failsBecause(message: String): IO[Unit] =
+      io.attempt.map {
+        case Left(t) =>
+          val e = intercept[EsException.CommandHandlerFailure](throw t)
+          assertEquals(e.getCause().getMessage(), message)
+        case _ =>
+          intercept[EsException.CommandHandlerFailure](())
+      }
   }
 }

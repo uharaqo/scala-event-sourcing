@@ -111,7 +111,7 @@ object EventSourcing {
   object CommandDispatcher:
     def apply(commandRegistry: CommandRegistry): CommandDispatcher = { request =>
       for
-        info      <- IO.fromOption(commandRegistry(request.name))(EsException.InvalidCommand(request.name))
+        info      <- IO.fromOption(commandRegistry.get(request.name))(EsException.InvalidCommand(request.name))
         responses <- info.processor(request, info.deserializer)
       yield responses
     }
@@ -122,16 +122,14 @@ object EventSourcing {
     processor: CommandProcessor[_, C, _],
   )
 
-  type CommandRegistry = Fqcn => Option[CommandInfo[?]]
+  type CommandRegistry = Map[Fqcn, CommandInfo[?]]
 
   object CommandRegistry:
     def from[C](
       processor: CommandProcessor[_, C, _],
       deserializers: Map[Fqcn, CommandDeserializer[C]]
-    ): CommandRegistry = {
-      val map = deserializers.map { case (k, v) => (k, CommandInfo[C](k, v, processor)) }
-      map.get
-    }
+    ): CommandRegistry =
+      deserializers.map { case (k, v) => (k, CommandInfo[C](k, v, processor)) }
 
   type CommandProcessor[S, C, E] = (CommandRequest, CommandDeserializer[C]) => IO[Seq[CommandResponse]]
 
@@ -170,4 +168,22 @@ object EventSourcing {
     case class CommandAlreadyRegistered(fqcn: Fqcn) extends EsException(s"Command already registered: $fqcn", None)
     case class CommandHandlerFailure(t: Throwable)  extends EsException(s"Command handler failure", Some(t))
     case object UnexpectedException                 extends EsException(s"Unexpected Exception", None)
+
+  // debugger TODO: improve these
+  def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
+    (s, c, ctx) =>
+      for
+        _ <- IO.println(s"Command: $c")
+        r <- commandHandler(s, c, ctx)
+        _ <- IO.println(s"Response: $r")
+      yield r
+
+  def debug(stateProvider: StateProvider): StateProvider =
+    new StateProvider {
+      override def get[S, E](info: ResourceInfo[S, E], id: ResourceIdentifier): IO[VersionedState[S]] =
+        for
+          s <- stateProvider.get(info, id)
+          _ <- IO.println(s"State: $s")
+        yield s
+    }
 }
