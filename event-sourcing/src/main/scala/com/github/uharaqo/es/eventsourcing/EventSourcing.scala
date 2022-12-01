@@ -2,9 +2,11 @@ package com.github.uharaqo.es.eventsourcing
 
 import cats.effect.*
 import cats.implicits.*
+import com.github.uharaqo.es.Serde.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import fs2.Stream
 
+import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Instant
 
 object EventSourcing {
@@ -13,17 +15,15 @@ object EventSourcing {
   type ResourceIdentifier = String
   type Version            = Long
   type Fqcn               = String
-  type RawCommand         = String
-  type Serialized         = String
 
   case class ResourceId(name: ResourceName, id: ResourceIdentifier)
-  case class VersionedEvent(version: Version, event: Serialized)
+  case class VersionedEvent(version: Version, event: Bytes)
   case class VersionedState[S](version: Version, state: S)
 
   // serializers
-  type CommandDeserializer[C] = RawCommand => IO[C]
-  type EventSerializer[E]     = E => IO[Serialized]
-  type EventDeserializer[E]   = Serialized => IO[E]
+  type CommandDeserializer[C] = Deserializer[C]
+  type EventSerializer[E]     = Serializer[E]
+  type EventDeserializer[E]   = Deserializer[E]
 
   // event store
   type EventHandler[S, E] = (S, E) => S
@@ -50,19 +50,23 @@ object EventSourcing {
     def apply[S, C, E](eventReader: EventReader): StateProvider = new StateProvider {
       override def get[S, E](info: ResourceInfo[S, E], id: ResourceIdentifier): IO[VersionedState[S]] =
         eventReader(ResourceId(info.name, id)).compile
-          .fold(IO.pure(VersionedState(0, info.emptyState))) { (prevState, e) =>
+          .fold(VersionedState(0, info.emptyState).pure[IO]) { (prevState, e) =>
             for
               prev  <- prevState
               event <- info.eventDeserializer(e.event)
-              next  <- IO.pure(info.eventHandler(prev.state, event))
+              next  <- info.eventHandler(prev.state, event).pure[IO]
             yield VersionedState(prev.version + 1, next)
           }
           .flatten
     }
 
   // command handler
-  case class CommandRequest(id: ResourceId, name: Fqcn, command: RawCommand)
-  case class CommandResponse(id: ResourceId, event: VersionedEvent)
+  type TsMs = Long
+  case class CommandRequest(id: ResourceId, name: Fqcn, command: Bytes)
+  case class CommandResponse(id: ResourceId, event: VersionedEvent, timestamp: TsMs) {
+    override def toString(): String =
+      s"CommandResponse($id,VersionedEvent(${event.version},${String(event.event, UTF_8)}),${Instant.ofEpochMilli(timestamp)})"
+  }
 
   type CommandHandler[S, C, E] = (S, C, CommandHandlerContext[E]) => IO[Seq[CommandResponse]]
 
@@ -89,7 +93,9 @@ object EventSourcing {
     override def save(events: E*): IO[Seq[CommandResponse]] =
       events.zipWithIndex.traverse {
         case (e, i) =>
-          serializer(e).map(se => CommandResponse(id, VersionedEvent(prevVer + i + 1, se)))
+          serializer(e).map { e =>
+            CommandResponse(id, VersionedEvent(prevVer + i + 1, e), System.currentTimeMillis())
+          }
       }
 
     override def withState[S2, E2](info: ResourceInfo[S2, E2], id: ResourceIdentifier)(
@@ -139,35 +145,42 @@ object EventSourcing {
       commandHandler: CommandHandler[S, C, E],
       stateProvider: StateProvider,
       eventRepository: EventRepository,
+      retryOnConflict: Boolean = true,
     ): CommandProcessor[S, C, E] = { (request, deserializer) =>
-      for
-        c    <- deserializer(request.command)
-        verS <- stateProvider.get(info, request.id.id)
-        ctx = new DefaultCommandHandlerContext(request.id, verS.version, info.eventSerializer, stateProvider)
-        ress <-
-          try
-            commandHandler(verS.state, c, ctx)
+      val handle = { (command: C) =>
+        for
+          verS <- stateProvider.get(info, request.id.id)
+          ctx = new DefaultCommandHandlerContext(request.id, verS.version, info.eventSerializer, stateProvider)
+          ress <-
+            commandHandler(verS.state, command, ctx)
               .recoverWith(t => IO.raiseError(EsException.CommandHandlerFailure(t)))
-          catch { case e: Throwable => IO.raiseError(EsException.CommandHandlerFailure(e)) }
-        success <- eventRepository.writer(ress)
-        // TODO: retry?
-        _ <- if (!success) IO.raiseError(EsException.EventStoreConflict()) else IO.unit
+          success <- eventRepository.writer(ress)
+          _       <- if (!success) IO.raiseError(EsException.EventStoreConflict()) else IO.unit
+        yield ress
+      }
+
+      for
+        c <- deserializer(request.command)
+        ress <- handle(c).recoverWith {
+          case t: EsException.EventStoreConflict =>
+            if (retryOnConflict) handle(c) else IO.raiseError(t)
+        }
       yield ress
     }
 
   // exceptions
-  sealed class EsException(message: String, cause: Option[Throwable] = None)
+  sealed class EsException(message: String, cause: Option[Throwable] = none)
       extends RuntimeException(message, cause.orNull)
 
   object EsException:
-    case class InvalidCommand(name: ResourceName, cause: Option[Throwable] = None)
+    case class InvalidCommand(name: ResourceName, cause: Option[Throwable] = none)
         extends EsException(s"Invalid Command: $name", cause)
-    case class EventStoreFailure(t: Throwable)      extends EsException("Failed to store event", Some(t))
-    case class EventStoreConflict()                 extends EsException("Failed to store event due to conflict", None)
-    case class EventLoadFailure(t: Throwable)       extends EsException("Failed to load event", Some(t))
-    case class CommandAlreadyRegistered(fqcn: Fqcn) extends EsException(s"Command already registered: $fqcn", None)
-    case class CommandHandlerFailure(t: Throwable)  extends EsException(s"Command handler failure", Some(t))
-    case object UnexpectedException                 extends EsException(s"Unexpected Exception", None)
+    case class EventStoreFailure(t: Throwable)      extends EsException("Failed to store event", t.some)
+    case class EventStoreConflict()                 extends EsException("Failed to store event due to conflict", none)
+    case class EventLoadFailure(t: Throwable)       extends EsException("Failed to load event", t.some)
+    case class CommandAlreadyRegistered(fqcn: Fqcn) extends EsException(s"Command already registered: $fqcn", none)
+    case class CommandHandlerFailure(t: Throwable)  extends EsException(s"Command handler failure", t.some)
+    case object UnexpectedException                 extends EsException(s"Unexpected Exception", none)
 
   // debugger TODO: improve these
   def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =

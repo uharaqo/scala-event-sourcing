@@ -1,12 +1,87 @@
 package com.github.uharaqo.es.eventprojection
 
-import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import cats.*, cats.implicits.*
-import cats.effect.*, cats.effect.implicits.*
+import cats.*
+import cats.effect.*
+import cats.effect.implicits.*
 import cats.effect.std.Queue
-import fs2.*
+import cats.implicits.*
 
-object EventProjections {
+import scala.concurrent.duration.*
+
+type Ticker = () => IO[Option[Unit]]
+
+object Ticker {
+
+  def apply(publishInterval: FiniteDuration): Resource[IO, Ticker] =
+    for
+      q <- Resource.eval(Queue.bounded[IO, Unit](1))
+      _ <- schedule(q, publishInterval).background
+    yield () => q.tryTake
+
+  private def schedule(q: Queue[IO, Unit], publishInterval: FiniteDuration): IO[Unit] =
+    q.tryOffer(())
+      >> IO.sleep(publishInterval)
+      >> schedule(q, publishInterval)
+}
+
+object ScheduledRunner {
+
+  def apply[S](
+    ticker: Resource[IO, Ticker],
+    task: S => IO[S],
+    pollingInterval: FiniteDuration,
+    initialState: S,
+  ): Resource[IO, Unit] =
+    for
+      t <- ticker
+      _ <- awaitAndRun(t, task, pollingInterval, initialState).background
+    yield ()
+
+  private def awaitAndRun[S](t: Ticker, task: S => IO[S], pollingInterval: FiniteDuration, prevState: S): IO[_] =
+    t()
+      >>= {
+        case Some(_) => task(prevState)
+        case None    => IO.sleep(pollingInterval) >> prevState.pure
+      }
+      >>= { last => awaitAndRun(t, task, pollingInterval, last) }
+}
+
+/*
+object TimerBackground extends IOApp {
+  type TriggerEvent = Int
+
+  def newQueue(): IO[Queue[IO, TriggerEvent]] = Queue.bounded[IO, TriggerEvent](64)
+
+  def scheduler(q: Queue[IO, TriggerEvent], i: Int): IO[Unit] =
+    IO(println(s"Publishing $i"))
+      >> q.offer(i)
+      >> IO.sleep(1.second).flatMap(_ => scheduler(q, i + 1))
+
+  def consumer(q: Queue[IO, TriggerEvent]): IO[Unit] =
+    for
+      maybe <- q.tryTake
+      _ <- maybe match {
+        case Some(value) => IO.println(value)
+        case None        => IO.sleep(500 millis)
+      }
+      _ <- consumer(q)
+    yield ()
+
+  override def run(args: List[String]): IO[ExitCode] =
+
+    val queue      = Resource.eval(newQueue())
+    val terminator = Resource.eval(IO.println("--- START ---") >> IO.sleep(5.seconds) >> IO.println("--- END ---"))
+
+    val p =
+      queue flatMap { q =>
+        consumer(q).background
+          >> scheduler(q, 1).background
+          >> terminator
+      }
+    p.use(_ => IO(ExitCode.Success))
+}
+
+object ProjectionDispatcher {
   sealed trait ProjectionTrigger
 
   object ProjectionTrigger:
@@ -35,7 +110,7 @@ object EventProjections {
 
 import com.github.uharaqo.es.eventprojection.EventProjections.ProjectionRepository
 
-class ProjectionBootstrap[E](
+class ProjectionProcessor[E](
   private val eventDeserializer: EventDeserializer[E],
   private val projectionRepository: ProjectionRepository,
   private val resourceName: ResourceName,
@@ -77,3 +152,4 @@ class ProjectionBootstrap[E](
     sender
   }
 }
+ */

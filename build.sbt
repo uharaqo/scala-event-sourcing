@@ -10,7 +10,6 @@ val options = Seq(
   "-unchecked",
   "-language:postfixOps",
   "-language:higherKinds",
-  "-Ypartial-unification"
   // "-Yexplicit-nulls",
 )
 

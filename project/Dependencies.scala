@@ -1,7 +1,7 @@
 import sbt._
 
 object Dependencies {
-  val fs2Version    = "3.3.0"
+  val fs2Version    = "3.4.0"
   val doobieVersion = "1.0.0-RC2"
 
   lazy val commonDeps =
@@ -25,8 +25,10 @@ object Dependencies {
 
   lazy val fs2Deps =
     Seq(
-      "org.typelevel" %% "cats-core"            % "2.8.0" withSources () withJavadoc (),
-      "org.typelevel" %% "cats-effect"          % "3.3.14" withSources () withJavadoc (),
+      "org.typelevel" %% "cats-core"            % "2.9.0" withSources () withJavadoc (),
+      "org.typelevel" %% "cats-effect"          % "3.4.1" withSources () withJavadoc (),
+      "org.typelevel" %% "log4cats-core"        % "2.5.0",
+      "org.typelevel" %% "log4cats-slf4j"       % "2.5.0",
       "co.fs2"        %% "fs2-io"               % fs2Version,
       "co.fs2"        %% "fs2-reactive-streams" % fs2Version,
     )

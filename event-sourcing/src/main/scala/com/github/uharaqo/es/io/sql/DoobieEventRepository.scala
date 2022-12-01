@@ -2,6 +2,7 @@ package com.github.uharaqo.es.io.sql
 
 import cats.effect.*
 import cats.implicits.*
+import com.github.uharaqo.es.Serde.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
 import com.github.uharaqo.es.eventprojection.EventProjections.*
 import doobie.*
@@ -25,10 +26,10 @@ class DoobieEventRepository(
 
   override val writer: EventWriter = { responses =>
     transactor.use { xa =>
-      val records = responses.map(e => (e.id.name, e.id.id, e.event.version, e.event.event))
+      val records = responses.map(e => (e.id.name, e.id.id, e.event.version, e.timestamp, e.event.event))
 
       import doobie.postgres._
-      Update[(ResourceName, ResourceIdentifier, Version, Serialized)](INSERT_EVENT)
+      Update[(ResourceName, ResourceIdentifier, Version, TsMs, Bytes)](INSERT_EVENT)
         .updateMany(records)
         .transact(xa)
         // Return false on a PK conflict
@@ -48,11 +49,11 @@ class DoobieEventRepository(
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
   }
 
-  override def load(resourceName: ResourceName, verGt: Version): Stream[IO, SerializedEventRecord] =
+  override def load(query: EventQuery): Stream[cats.effect.IO, EventRecord] =
     for
       xa <- Stream.resource(transactor)
-      stream <- SELECT_EVENTS_BY_RESOURCE(resourceName, verGt)
-        .query[SerializedEventRecord]
+      stream <- SELECT_EVENTS_BY_RESOURCE(query.resourceName, query.lastTimestamp)
+        .query[EventRecord]
         .stream
         .transact(xa)
     yield stream
@@ -68,18 +69,18 @@ object DoobieEventRepository {
       name VARCHAR(15) NOT NULL,
       id VARCHAR(127) NOT NULL,
       ver BIGINT NOT NULL,
-      timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      ts_ms BIGINT NOT NULL UNIQUE,
       event VARCHAR(255) NOT NULL,
       PRIMARY KEY (name, id, ver)
     )"""
 
-  val INSERT_EVENT = "INSERT INTO events (name, id, ver, event) VALUES (?, ?, ?, ?)"
+  val INSERT_EVENT = "INSERT INTO events (name, id, ver, ts_ms, event) VALUES (?, ?, ?, ?, ?)"
   val SELECT_EVENTS =
     (resourceId: ResourceId) =>
       sql"""SELECT ver, event FROM events WHERE name = ${resourceId.name} AND id = ${resourceId.id} ORDER BY ver"""
   val SELECT_EVENTS_BY_RESOURCE =
-    (resourceName: ResourceName, verGt: Long) =>
-      sql"""SELECT id, ver, event FROM events WHERE name = ${resourceName} AND ver > ${verGt} ORDER BY ver"""
+    (resourceName: ResourceName, timestampGt: TsMs) =>
+      sql"""SELECT id, ver, ts_ms, event FROM events WHERE name = ${resourceName} AND ts_ms > ${timestampGt} ORDER BY ts_ms"""
 
   // val createResourcesTable =
   //   sql"""CREATE TABLE resources (

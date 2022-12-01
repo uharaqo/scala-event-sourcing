@@ -3,7 +3,7 @@ package com.github.uharaqo.es
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import com.github.uharaqo.es.io.json.JsonCodec
+import com.github.uharaqo.es.io.json.JsonSerde
 
 object GroupResource {
   import GroupResource.*
@@ -28,7 +28,7 @@ object GroupResource {
   val commandSerializer: JsonValueCodec[GroupCommand] = JsonCodecMaker.make
   val commandDeserializers: Map[Fqcn, CommandDeserializer[GroupCommand]] = {
     def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, CommandDeserializer[C]) =
-      (c.getCanonicalName().nn, JsonCodec[C]().decode)
+      (c.getCanonicalName().nn, JsonSerde[C]().deserializer)
     Map(
       deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
       deserializer(classOf[AddUser])(JsonCodecMaker.make),
@@ -83,9 +83,9 @@ object GroupResource {
     import com.github.plokhotnyuk.jsoniter_scala.macros._
     import com.github.plokhotnyuk.jsoniter_scala.core._
     implicit val codec = JsonCodecMaker.make[GroupEvent]
-    val eCodec         = JsonCodec()
+    val eCodec         = JsonSerde()
 
-    ResourceInfo("group", Group.EMPTY, eCodec.encode(_), eCodec.decode(_), eventHandler)
+    ResourceInfo("group", Group.EMPTY, eCodec.serializer, eCodec.deserializer, eventHandler)
   }
 
   def newCommandProcessor(repo: EventRepository): CommandProcessor[Group, GroupCommand, GroupEvent] =
