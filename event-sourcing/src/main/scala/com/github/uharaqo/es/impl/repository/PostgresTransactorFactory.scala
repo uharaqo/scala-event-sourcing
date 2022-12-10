@@ -8,13 +8,13 @@ import doobie.util.transactor.Transactor
 object PostgresTransactorFactory {
 
   /** CREATE DATABASE devdb;
-   *
-   * \c devdb
-   *
-   * CREATE ROLE testuser WITH LOGIN PASSWORD 'testpass';
-   *
-   * GRANT ALL ON ALL TABLES IN SCHEMA public TO testuser;
-   */
+    *
+    * \c devdb
+    *
+    * CREATE ROLE testuser WITH LOGIN PASSWORD 'testpass';
+    *
+    * GRANT ALL ON ALL TABLES IN SCHEMA public TO testuser;
+    */
   def create(): Resource[IO, Transactor[IO]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[IO](32)

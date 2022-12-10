@@ -21,6 +21,7 @@ val baseSettings =
     scalacOptions            := options,
     Test / parallelExecution := true,
     run / fork               := true,
+    scalafmtOnCompile        := true,
   )
 
 lazy val eventSourcing =

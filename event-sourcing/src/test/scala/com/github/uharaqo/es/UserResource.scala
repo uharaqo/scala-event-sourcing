@@ -57,7 +57,7 @@ object UserResource {
       case UserRegistered(name) =>
         s match
           case User.EMPTY => User(name, 0)
-          case _ => throw EsException.UnexpectedException
+          case _          => throw EsException.UnexpectedException
 
       case PointAdded(point) =>
         s.copy(point = s.point + point)
@@ -108,7 +108,7 @@ object UserResource {
     import com.github.plokhotnyuk.jsoniter_scala.macros._
     import com.github.plokhotnyuk.jsoniter_scala.core._
     implicit val codec = JsonCodecMaker.make[UserEvent]
-    val eventCodec = JsonCodec()
+    val eventCodec     = JsonCodec()
 
     StateInfo("user", User.EMPTY, eventCodec.serializer, eventCodec.deserializer, eventHandler)
   }

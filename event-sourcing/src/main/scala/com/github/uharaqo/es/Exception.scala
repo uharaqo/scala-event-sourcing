@@ -6,7 +6,7 @@ sealed class EsException(message: String, cause: Option[Throwable] = none) exten
 
 object EsException:
   case class InvalidCommand(name: AggName, cause: Option[Throwable] = none)
-    extends EsException(s"Invalid Command: $name", cause)
+      extends EsException(s"Invalid Command: $name", cause)
 
   case class EventStoreFailure(t: Throwable) extends EsException("Failed to store event", t.some)
 

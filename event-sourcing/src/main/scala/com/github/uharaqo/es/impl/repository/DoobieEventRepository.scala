@@ -6,9 +6,9 @@ import doobie.implicits.*
 import doobie.util.transactor.Transactor
 
 class DoobieEventRepository(
-                             private val transactor: Resource[IO, Transactor[IO]]
-                           ) extends EventRepository
-  with ProjectionRepository {
+  private val transactor: Resource[IO, Transactor[IO]]
+) extends EventRepository
+    with ProjectionRepository {
 
   import DoobieEventRepository.*
   import cats.implicits.*

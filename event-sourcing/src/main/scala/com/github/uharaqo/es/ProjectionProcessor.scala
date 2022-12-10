@@ -55,6 +55,8 @@ object ProjectionProcessor {
 }
 
 object ScheduledProjection {
+  type Ticker = () => IO[Option[Unit]]
+
   def apply[T, E](
     processor: ProjectionProcessor[T],
     initialState: T,
@@ -78,8 +80,6 @@ object ScheduledProjection {
       initialState,
     )
   }
-
-  type Ticker = () => IO[Option[Unit]]
 
   object Ticker {
 
