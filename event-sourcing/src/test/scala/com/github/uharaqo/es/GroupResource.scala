@@ -2,8 +2,8 @@ package com.github.uharaqo.es
 
 import cats.effect.*
 import cats.implicits.*
-import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import com.github.uharaqo.es.io.json.JsonSerde
+import com.github.uharaqo.es.*
+import com.github.uharaqo.es.impl.codec.JsonCodec
 
 object GroupResource {
   import GroupResource.*
@@ -25,10 +25,13 @@ object GroupResource {
 
   import com.github.plokhotnyuk.jsoniter_scala.macros._
   import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
+
+  /** for testing */
   val commandSerializer: JsonValueCodec[GroupCommand] = JsonCodecMaker.make
-  val commandDeserializers: Map[Fqcn, CommandDeserializer[GroupCommand]] = {
-    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, CommandDeserializer[C]) =
-      (c.getCanonicalName().nn, JsonSerde[C]().deserializer)
+
+  val deserializers: Map[Fqcn, Deserializer[GroupCommand]] = {
+    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
+      (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
     Map(
       deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
       deserializer(classOf[AddUser])(JsonCodecMaker.make),
@@ -79,23 +82,15 @@ object GroupResource {
               }
   }
 
-  val info: ResourceInfo[Group, GroupEvent] = {
+  val info: StateInfo[Group, GroupEvent] = {
     import com.github.plokhotnyuk.jsoniter_scala.macros._
     import com.github.plokhotnyuk.jsoniter_scala.core._
     implicit val codec = JsonCodecMaker.make[GroupEvent]
-    val eCodec         = JsonSerde()
+    val eCodec         = JsonCodec()
 
-    ResourceInfo("group", Group.EMPTY, eCodec.serializer, eCodec.deserializer, eventHandler)
+    StateInfo("group", Group.EMPTY, eCodec.serializer, eCodec.deserializer, eventHandler)
   }
 
-  def newCommandProcessor(repo: EventRepository): CommandProcessor[Group, GroupCommand, GroupEvent] =
-    CommandProcessor(
-      info,
-      debug(commandHandler),
-      debug(StateProvider(repo.reader)),
-      repo,
-    )
-
-  def newCommandRegistry(repo: EventRepository): CommandRegistry =
-    CommandRegistry.from(newCommandProcessor(repo), commandDeserializers)
+  def newCommandRegistry(): CommandRegistry =
+    CommandRegistry(info, deserializers, debug(commandHandler))
 }

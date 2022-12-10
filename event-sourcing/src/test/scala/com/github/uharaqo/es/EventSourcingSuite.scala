@@ -1,30 +1,33 @@
 package com.github.uharaqo.es
 
-import cats.effect.*
+import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
-import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import com.github.uharaqo.es.io.sql.*
-import scala.concurrent.duration.*
+import com.github.uharaqo.es.impl.repository.*
 import fs2.Stream
 import munit.*
-import com.github.uharaqo.es.UserResource.UserEvent
+
+import java.time.Instant
+import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
 
-  private val transactor                  = H2TransactorFactory.create()
+  private val transactor = H2TransactorFactory.create()
+//  private val transactor                  = PostgresTransactorFactory.create()
   private val repo: DoobieEventRepository = DoobieEventRepository(transactor)
 
   private val dispatcher =
-    CommandDispatcher(
-      UserResource.newCommandRegistry(repo) ++
-        GroupResource.newCommandRegistry(repo)
+    CommandProcessor(
+      UserResource.newCommandRegistry() ++
+        GroupResource.newCommandRegistry(),
+      debug(DefaultStateProvider(repo.reader)),
+      repo.writer,
     )
-  private val stateProvider = StateProvider(repo.reader)
+  private val stateProvider = DefaultStateProvider(repo.reader)
 
   private val user1 = "user1"
   private val user2 = "user2"
 
-  test("user resource") {
+  test("user aggregate") {
     val test1 = {
       import com.github.uharaqo.es.UserResource.*
 
@@ -106,34 +109,24 @@ class EventSourcingSuite extends CatsEffectSuite {
       yield ()
     }
 
-    import com.github.uharaqo.es.eventprojection.EventProjections.*
-    import com.github.uharaqo.es.eventprojection.*
     val projection =
-      ProjectionHandler(
-        UserResource.info.eventDeserializer,
-        r => IO.println(s"--- ${UserResource.info.name}, $r ---").map(_ => r.asRight),
-        2,
-        1 seconds
-      )
-
-    val ticker = Ticker(100 millis)
-    val runner =
-      ScheduledRunner[ProjectionEvent[UserEvent]](
-        ticker,
-        prev =>
-          repo
-            .load(EventQuery(UserResource.info.name, prev.timestamp))
-            .evalMap(record => projection(record, prev))
-            .compile
-            .last
-            >>= { o => o.getOrElse(prev).pure[IO] },
+      ScheduledProjection(
+        ProjectionProcessor(
+          UserResource.info.eventDeserializer,
+          r => IO.println(s"--- ${UserResource.info.name}, $r ---").map(_ => r.asRight),
+          2,
+          1 seconds
+        ),
+        ProjectionEvent("", 0L, 0, null),
+        prev => EventQuery(UserResource.info.name, prev.timestamp),
+        repo,
         100 millis,
-        ProjectionEvent("", 0L, 0L, null),
+        100 millis,
       )
 
     (for
       _ <- Resource.eval(repo.initTables())
-      _ <- runner.start
+      _ <- projection.start
       _ <- Resource.eval(test1 >> test2)
       _ <- Resource.eval(IO.sleep(3 seconds))
     yield ())

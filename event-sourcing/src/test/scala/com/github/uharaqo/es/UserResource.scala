@@ -2,36 +2,49 @@ package com.github.uharaqo.es
 
 import cats.effect.*
 import cats.implicits.*
-import com.github.uharaqo.es.eventsourcing.EventSourcing.*
-import com.github.uharaqo.es.io.json.JsonSerde
+import com.github.uharaqo.es.*
+import com.github.uharaqo.es.impl.codec.JsonCodec
 
 object UserResource {
+
   import UserResource.*
 
   // commands
   sealed trait UserCommand
-  case class RegisterUser(name: String)                 extends UserCommand
-  case class AddPoint(point: Int)                       extends UserCommand
+
+  case class RegisterUser(name: String) extends UserCommand
+
+  case class AddPoint(point: Int) extends UserCommand
+
   case class SendPoint(recipientId: String, point: Int) extends UserCommand
 
   // events
   sealed trait UserEvent
-  case class UserRegistered(name: String)                extends UserEvent
-  case class PointAdded(point: Int)                      extends UserEvent
-  case class PointSent(recipientId: String, point: Int)  extends UserEvent
+
+  case class UserRegistered(name: String) extends UserEvent
+
+  case class PointAdded(point: Int) extends UserEvent
+
+  case class PointSent(recipientId: String, point: Int) extends UserEvent
+
   case class PointReceived(senderId: String, point: Int) extends UserEvent
 
   // state
   case class User(name: String, point: Int)
+
   object User:
     val EMPTY = User("", 0)
 
-  import com.github.plokhotnyuk.jsoniter_scala.macros._
   import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
+  import com.github.plokhotnyuk.jsoniter_scala.macros._
+
+  /** for testing */
   val commandSerializer: JsonValueCodec[UserCommand] = JsonCodecMaker.make
-  val commandDeserializers: Map[Fqcn, CommandDeserializer[UserCommand]] = {
-    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, CommandDeserializer[C]) =
-      (c.getCanonicalName().nn, JsonSerde[C]().deserializer)
+
+  val deserializers: Map[Fqcn, Deserializer[UserCommand]] = {
+    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
+      (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
+
     Map(
       deserializer(classOf[RegisterUser])(JsonCodecMaker.make),
       deserializer(classOf[AddPoint])(JsonCodecMaker.make),
@@ -44,7 +57,7 @@ object UserResource {
       case UserRegistered(name) =>
         s match
           case User.EMPTY => User(name, 0)
-          case _          => throw EsException.UnexpectedException
+          case _ => throw EsException.UnexpectedException
 
       case PointAdded(point) =>
         s.copy(point = s.point + point)
@@ -79,7 +92,7 @@ object UserResource {
             if (s.point < point) //
               fail(IllegalStateException("Point Shortage"))
             else
-              val senderId = ctx.id.id
+              val senderId = ctx.id
               for
                 sent <- save(PointSent(recipientId, point))
                 received <- withState(UserResource.info, recipientId) { (s, ctx2) =>
@@ -91,23 +104,15 @@ object UserResource {
               yield sent ++ received
   }
 
-  val info: ResourceInfo[User, UserEvent] = {
+  val info: StateInfo[User, UserEvent] = {
     import com.github.plokhotnyuk.jsoniter_scala.macros._
     import com.github.plokhotnyuk.jsoniter_scala.core._
     implicit val codec = JsonCodecMaker.make[UserEvent]
-    val serde          = JsonSerde()
+    val eventCodec = JsonCodec()
 
-    ResourceInfo("user", User.EMPTY, serde.serializer, serde.deserializer, eventHandler)
+    StateInfo("user", User.EMPTY, eventCodec.serializer, eventCodec.deserializer, eventHandler)
   }
 
-  def newCommandProcessor(repo: EventRepository): CommandProcessor[User, UserCommand, UserEvent] =
-    CommandProcessor(
-      info,
-      debug(commandHandler),
-      debug(StateProvider(repo.reader)),
-      repo,
-    )
-
-  def newCommandRegistry(repo: EventRepository): CommandRegistry =
-    CommandRegistry.from(newCommandProcessor(repo), commandDeserializers)
+  def newCommandRegistry(): CommandRegistry =
+    CommandRegistry(info, deserializers, debug(commandHandler))
 }
