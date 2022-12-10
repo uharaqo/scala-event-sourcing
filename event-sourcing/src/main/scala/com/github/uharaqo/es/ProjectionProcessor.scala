@@ -28,7 +28,7 @@ object ProjectionProcessor {
         .recoverWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t)))
     }
 
-    lazy val handler: (FiniteDuration, Int, ProjectionEvent[E]) => IO[T] = { (retryInterval, remainingRetry, event) =>
+    lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[T] = { (event, retryInterval, remainingRetry) =>
       projection(event) >>= {
         case Right(s) =>
           s.pure
@@ -39,7 +39,7 @@ object ProjectionProcessor {
               if (remainingRetry > 0)
                 Logger[IO].warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
                   >> IO.sleep(retryInterval)
-                  >> handler(retryInterval * 2, remainingRetry - 1, event)
+                  >> handle(event, retryInterval * 2, remainingRetry - 1)
               else
                 IO.raiseError(UnrecoverableException("Projection retry failure", err))
             case _: UnrecoverableException =>
@@ -50,7 +50,7 @@ object ProjectionProcessor {
     }
 
     deserialize(event)
-      >>= { e => handler(retryInterval, maxRetry, e) }
+      >>= { e => handle(e, retryInterval, maxRetry) }
   }
 }
 

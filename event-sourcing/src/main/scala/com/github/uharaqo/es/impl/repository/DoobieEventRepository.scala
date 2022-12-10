@@ -36,10 +36,10 @@ class DoobieEventRepository(
         .map(z => z.map(_ == responses.size).fold(b => false, b => b))
     }
   }
-  override val reader: EventReader = { id =>
+  override val reader: EventReader = { info =>
     (for
       xa     <- Stream.resource(transactor)
-      stream <- SELECT_EVENTS(id).query[VersionedEvent].stream.transact(xa)
+      stream <- SELECT_EVENTS(info).query[VersionedEvent].stream.transact(xa)
     yield stream)
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
   }
