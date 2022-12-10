@@ -11,18 +11,18 @@ import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
 
-//  private val transactor = H2TransactorFactory.create()
-  private val transactor                  = PostgresTransactorFactory.create()
+  private val transactor = H2TransactorFactory.create()
+//  private val transactor                  = PostgresTransactorFactory.create()
   private val repo: DoobieEventRepository = DoobieEventRepository(transactor)
 
   private val dispatcher =
     CommandProcessor(
       UserResource.newCommandRegistry() ++
         GroupResource.newCommandRegistry(),
-      debug(DefaultStateProvider(repo.reader)),
+      debug(StateProvider(repo.reader)),
       repo.writer,
     )
-  private val stateProvider = DefaultStateProvider(repo.reader)
+  private val stateProvider = StateProvider(repo.reader)
 
   private val user1 = "user1"
   private val user2 = "user2"
