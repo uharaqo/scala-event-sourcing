@@ -1,0 +1,17 @@
+*.class
+*.log
+*.iml
+*.ipr
+*.iws
+*.sc
+
+.bloop
+.bsp
+.idea
+.metals
+.vscode
+target
+build
+
+.DS_Store
+metals.sbt
