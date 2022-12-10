@@ -1,9 +1,8 @@
-package com.github.uharaqo.es.io.sql
+package com.github.uharaqo.es.impl.repository
 
-import cats.effect.*
-import cats.implicits.*
+import cats.effect.{IO, Resource}
 import doobie.h2.H2Transactor
-import doobie.util.*
+import doobie.util.ExecutionContexts
 import doobie.util.transactor.Transactor
 
 object H2TransactorFactory {

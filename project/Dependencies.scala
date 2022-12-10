@@ -1,8 +1,9 @@
 import sbt._
 
 object Dependencies {
-  val fs2Version    = "3.4.0"
-  val doobieVersion = "1.0.0-RC2"
+  val fs2Version      = "3.4.0"
+  val doobieVersion   = "1.0.0-RC2"
+  val jsoniterVersion = "2.18.1"
 
   lazy val commonDeps =
     Seq(
@@ -12,8 +13,8 @@ object Dependencies {
       // "org.typelevel"          %% "shapeless3-deriving" % "3.2.0",
 
       // logging
-      "org.slf4j"                   % "slf4j-api"       % "2.0.3",
-      "ch.qos.logback"              % "logback-classic" % "1.4.4",
+      "org.slf4j"                   % "slf4j-api"       % "2.0.5",
+      "ch.qos.logback"              % "logback-classic" % "1.4.5",
       "com.typesafe.scala-logging" %% "scala-logging"   % "3.9.5",
     )
 
@@ -35,8 +36,8 @@ object Dependencies {
 
   lazy val serializerDeps =
     Seq(
-      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % "2.17.9",
-      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % "2.17.9" % "provided", // Use "provided" if "compile-internal" is not supported
+      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-core" % jsoniterVersion,
+      "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % jsoniterVersion % "provided", // Use "provided" if "compile-internal" is not supported
     )
 
   lazy val doobieDeps =
@@ -45,6 +46,6 @@ object Dependencies {
       "org.tpolecat"  %% "doobie-hikari"   % doobieVersion,
       "org.tpolecat"  %% "doobie-postgres" % doobieVersion,
       "org.tpolecat"  %% "doobie-h2"       % doobieVersion,
-      "org.postgresql" % "postgresql"      % "42.5.0",
+      "org.postgresql" % "postgresql"      % "42.5.1",
     )
 }
