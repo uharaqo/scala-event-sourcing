@@ -2,8 +2,16 @@ package com.github.uharaqo.es
 
 import cats.effect.IO
 
-trait StateProvider:
-  def load[S, E](info: StateInfo[S, E], id: AggId): IO[VersionedState[S]]
+trait StateProvider[S] {
+  def load(id: AggId): IO[VersionedState[S]] = load(id, None)
+  def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]]
+  def afterWrite(id: AggId, prevState: VersionedState[S], responses: Seq[EventRecord]): IO[Unit] = IO.unit
+}
+
+trait StateProviderFactory {
+  def create[S, E](info: StateInfo[S, E]): StateProvider[S]
+  def memoise: StateProviderFactory = MemoisedStateProviderFactory(this)
+}
 
 case class StateInfo[S, E](
   name: AggName,
@@ -11,21 +19,11 @@ case class StateInfo[S, E](
   eventSerializer: Serializer[E],
   eventDeserializer: Deserializer[E],
   eventHandler: EventHandler[S, E],
-)
-
-object StateProvider:
-  import cats.implicits.*
-
-  def apply(eventReader: EventReader) =
-    new StateProvider {
-      override def load[S, E](info: StateInfo[S, E], id: AggId): IO[VersionedState[S]] =
-        eventReader(AggInfo(info.name, id)).compile
-          .fold(VersionedState(0, info.emptyState).pure[IO]) { (prevState, e) =>
-            for
-              prev  <- prevState
-              event <- info.eventDeserializer(e.event)
-              next  <- info.eventHandler(prev.state, event).pure[IO]
-            yield VersionedState(prev.version + 1, next)
-          }
-          .flatten
-    }
+) {
+  override def hashCode(): Int = name.hashCode
+  override def equals(obj: Any): Boolean =
+    obj match
+      case null                 => false
+      case obj: StateInfo[_, _] => this == obj || name.equals(obj.name)
+      case _                    => false
+}

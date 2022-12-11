@@ -5,8 +5,12 @@ import cats.implicits.*
 import com.github.uharaqo.es.impl.repository.*
 import fs2.Stream
 import munit.*
+import scalacache.AbstractCache
+import scalacache.caffeine.CaffeineCache
+import com.github.benmanes.caffeine.cache.Caffeine
 
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
@@ -15,14 +19,26 @@ class EventSourcingSuite extends CatsEffectSuite {
 //  private val transactor                  = PostgresTransactorFactory.create()
   private val repo: DoobieEventRepository = DoobieEventRepository(transactor)
 
+  private val stateProvider =
+    debug(
+      CachedStateProviderFactory(
+        EventReaderStateProviderFactory(repo.reader),
+        ScalaCacheFactory(
+          new CacheFactory {
+            override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
+              CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
+          },
+          Some(Duration(86400, TimeUnit.SECONDS))
+        )
+      ).memoise
+    )
   private val dispatcher =
     CommandProcessor(
-      UserResource.newCommandRegistry() ++
-        GroupResource.newCommandRegistry(),
-      debug(StateProvider(repo.reader)),
+      UserResource.newCommandRegistry()
+        ++ GroupResource.newCommandRegistry(),
+      stateProvider,
       repo.writer,
     )
-  private val stateProvider = StateProvider(repo.reader)
 
   private val user1 = "user1"
   private val user2 = "user2"

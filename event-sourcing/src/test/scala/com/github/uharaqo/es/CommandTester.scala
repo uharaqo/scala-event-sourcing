@@ -2,18 +2,18 @@ package com.github.uharaqo.es
 
 import cats.effect.*
 import cats.implicits.*
-import com.github.uharaqo.es.*
+import com.github.plokhotnyuk.jsoniter_scala.core.*
 import munit.Assertions.*
 
 import java.nio.charset.StandardCharsets.UTF_8
-import com.github.plokhotnyuk.jsoniter_scala.core.*
 
 class CommandTester[S, C, E](
-  private val info: StateInfo[S, E],
+  info: StateInfo[S, E],
   commandSerializer: JsonValueCodec[C],
-  private val dispatcher: CommandProcessor,
-  private val stateProvider: StateProvider,
+  dispatcher: CommandProcessor,
+  stateProviderFactory: StateProviderFactory,
 ) {
+  private val stateProvider = stateProviderFactory.create(info)
 
   def send(aggId: AggId, command: C): IO[Seq[EventRecord]] =
     send(
@@ -38,7 +38,7 @@ class CommandTester[S, C, E](
     }
 
     def states(states: (AggId, S)*) = io flatMap { v =>
-      for ss <- states.traverse(e => stateProvider.load(info, e._1))
+      for ss <- states.traverse(e => stateProvider.load(e._1))
       yield
         assertEquals(ss.map(_.state), states.map(_._2))
         v
@@ -54,3 +54,24 @@ class CommandTester[S, C, E](
       }
   }
 }
+
+def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
+  (s, c, ctx) =>
+    for
+      _ <- IO.println(s"Command: $c")
+      r <- commandHandler(s, c, ctx)
+      _ <- IO.println(s"Response: $r")
+    yield r
+
+def debug(stateProviderFactory: StateProviderFactory): StateProviderFactory =
+  new StateProviderFactory {
+    override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = {
+      val stateProvider = stateProviderFactory.create(info)
+      { (id, prev) =>
+        for
+          s <- stateProvider.load(id, prev)
+          _ <- IO.println(s"State: $s")
+        yield s
+      }
+    }
+  }

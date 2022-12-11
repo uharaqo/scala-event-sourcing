@@ -6,7 +6,7 @@ import doobie.implicits.*
 import doobie.util.transactor.Transactor
 
 class DoobieEventRepository(
-  private val transactor: Resource[IO, Transactor[IO]]
+  transactor: Resource[IO, Transactor[IO]]
 ) extends EventRepository
     with ProjectionRepository {
 
@@ -36,22 +36,17 @@ class DoobieEventRepository(
         .map(z => z.map(_ == responses.size).fold(b => false, b => b))
     }
   }
-  override val reader: EventReader = { info =>
-    (for
-      xa     <- Stream.resource(transactor)
-      stream <- SELECT_EVENTS(info).query[VersionedEvent].stream.transact(xa)
-    yield stream)
+  override val reader: EventReader = { (info, prevVer) =>
+    (
+      Stream.resource(transactor)
+        >>= { SELECT_EVENTS(info, prevVer).query[VersionedEvent].stream.transact(_) }
+    )
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
   }
 
   override def load(query: EventQuery): Stream[IO, EventRecord] =
-    for
-      xa <- Stream.resource(transactor)
-      stream <- SELECT_EVENTS_BY_RESOURCE(query.name, query.lastTimestamp)
-        .query[EventRecord]
-        .stream
-        .transact(xa)
-    yield stream
+    Stream.resource(transactor)
+      >>= { xa => SELECT_EVENTS_BY_RESOURCE(query.name, query.lastTimestamp).query[EventRecord].stream.transact(xa) }
 }
 
 object DoobieEventRepository {
@@ -68,7 +63,8 @@ object DoobieEventRepository {
 
   val INSERT_EVENT = "INSERT INTO events (name, id, ver, ts_ms, event) VALUES (?, ?, ?, ?, ?)"
   val SELECT_EVENTS =
-    (info: AggInfo) => sql"""SELECT ver, event FROM events WHERE name = ${info.name} AND id = ${info.id} ORDER BY ver"""
+    (info: AggInfo, prevVer: Version) =>
+      sql"""SELECT ver, event FROM events WHERE name = ${info.name} AND id = ${info.id} AND ver > ${prevVer} ORDER BY ver"""
   val SELECT_EVENTS_BY_RESOURCE =
     (name: AggName, timestampGt: TsMs) =>
       sql"""SELECT name, id, ver, ts_ms, event FROM events WHERE name = $name AND ts_ms > $timestampGt ORDER BY ts_ms"""

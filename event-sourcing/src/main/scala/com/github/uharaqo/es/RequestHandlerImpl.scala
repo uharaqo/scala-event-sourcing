@@ -1,5 +1,8 @@
 package com.github.uharaqo.es
 
+import cats.effect.IO
+import com.github.uharaqo.es.EsException.*
+
 object CommandRegistry {
   def apply[S, C, E](
     stateInfo: StateInfo[S, E],
@@ -10,30 +13,32 @@ object CommandRegistry {
 }
 
 object CommandProcessor {
-  import cats.effect.IO
-  import com.github.uharaqo.es.EsException.*
-
   def apply(
     commandRegistry: CommandRegistry,
-    stateProvider: StateProvider,
+    stateProviderFactory: StateProviderFactory,
     eventWriter: EventWriter,
   ): CommandProcessor = { request =>
     val id          = request.info.id
     val commandName = request.name
+    val rawCommand  = request.command
 
     for
-      info    <- IO.fromOption(commandRegistry.get(commandName))(InvalidCommand(commandName))
-      command <- info.deserializer(request.command)
-      verS    <- stateProvider.load(info.stateInfo, id)
+      entry   <- IO.fromOption(commandRegistry.get(commandName))(InvalidCommand(commandName))
+      command <- entry.deserializer(rawCommand)
 
-      ctx = new DefaultCommandHandlerContext(info.stateInfo, id, verS.version, stateProvider)
+      stateProvider = stateProviderFactory.create(entry.stateInfo)
+      prevState <- stateProvider.load(id)
+
+      ctx = new DefaultCommandHandlerContext(entry.stateInfo, id, prevState.version, stateProviderFactory)
       responses <-
-        info
-          .handler(verS.state, command, ctx)
+        entry
+          .handler(prevState.state, command, ctx)
           .recoverWith(t => IO.raiseError(CommandHandlerFailure(t)))
 
       success <- eventWriter(responses)
       _       <- if (!success) IO.raiseError(EventStoreConflict()) else IO.unit
+
+      _ <- stateProvider.afterWrite(id, prevState, responses)
     yield responses
   }
   // .recoverWith { case t: EventStoreConflict => if (retryOnConflict) handle else IO.raiseError(t) }
