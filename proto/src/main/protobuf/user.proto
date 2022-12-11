@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package com.github.uharaqo.es.example.proto;
+option java_multiple_files = true;
+
+message UserCommand {
+  oneof sealed_value {
+    RegisterUser register_user = 1;
+    AddPoint add_point = 2;
+    SendPoint send_point = 3;
+  }
+}
+
+message UserEvent {
+  oneof sealed_value {
+    UserRegistered user_registered = 1;
+    PointAdded point_added = 2;
+    PointSent point_sent = 3;
+    PointReceived point_received = 4;
+  }
+}
+
+message RegisterUser {
+  string name = 1;
+}
+
+message UserRegistered {
+  string name = 1;
+}
+
+message AddPoint {
+  int32 point = 1;
+}
+
+message PointAdded {
+  int32 point = 1;
+}
+
+message SendPoint {
+  string recipient_id = 1;
+  int32 point = 2;
+}
+
+message PointSent {
+  string recipient_id = 1;
+  int32 point = 2;
+}
+
+message PointReceived {
+  string sender_id = 1;
+  int32 point = 2;
+}

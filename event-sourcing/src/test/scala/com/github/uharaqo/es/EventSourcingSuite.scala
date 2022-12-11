@@ -50,6 +50,7 @@ class EventSourcingSuite extends CatsEffectSuite {
 
   test("user aggregate") {
     val test1 = { (repo: EventRepository) =>
+      import com.github.uharaqo.es.example.proto.user.*
       import com.github.uharaqo.es.UserResource.*
       val tester = newTester(info, commandSerializer, repo)
       import tester.*
@@ -100,6 +101,7 @@ class EventSourcingSuite extends CatsEffectSuite {
     }
 
     val test2 = { (repo: EventRepository) =>
+      import com.github.uharaqo.es.example.proto.group.*
       import com.github.uharaqo.es.GroupResource.*
       val tester = newTester(info, commandSerializer, repo)
       import tester.*

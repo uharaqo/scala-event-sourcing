@@ -24,6 +24,12 @@ val baseSettings =
     scalafmtOnCompile        := true,
   )
 
+lazy val proto =
+  (project in file("proto"))
+    .settings(baseSettings)
+    .settings(name := "proto")
+    .enablePlugins(Fs2Grpc)
+
 lazy val eventSourcing =
   (project in file("event-sourcing"))
     .settings(baseSettings)
@@ -32,7 +38,8 @@ lazy val eventSourcing =
       libraryDependencies ++=
         fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
     )
+    .dependsOn(proto)
 
 val root =
   (project in file("."))
-    .aggregate(eventSourcing)
+    .aggregate(proto, eventSourcing)
