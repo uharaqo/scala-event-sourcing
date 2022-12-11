@@ -2,12 +2,14 @@ package com.github.uharaqo.es
 
 import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
-import com.github.uharaqo.es.impl.repository.*
 import fs2.Stream
 import munit.*
 import scalacache.AbstractCache
 import scalacache.caffeine.CaffeineCache
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.uharaqo.es.impl.repository.*
+import doobie.util.transactor.Transactor
 
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -16,13 +18,13 @@ import scala.concurrent.duration.*
 class EventSourcingSuite extends CatsEffectSuite {
 
   private val transactor = H2TransactorFactory.create()
-//  private val transactor                  = PostgresTransactorFactory.create()
-  private val repo: DoobieEventRepository = DoobieEventRepository(transactor)
+//  private val transactor = PostgresTransactorFactory.create()
+  private val repository = (xa: Transactor[IO]) => DoobieEventRepository(xa)
 
-  private val stateProvider =
+  private val stateProvider = (reader: EventReader) =>
     debug(
       CachedStateProviderFactory(
-        EventReaderStateProviderFactory(repo.reader),
+        EventReaderStateProviderFactory(reader),
         ScalaCacheFactory(
           new CacheFactory {
             override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
@@ -32,23 +34,24 @@ class EventSourcingSuite extends CatsEffectSuite {
         )
       ).memoise
     )
-  private val dispatcher =
+  private val dispatcher = (repo: EventRepository) =>
     CommandProcessor(
       UserResource.newCommandRegistry()
         ++ GroupResource.newCommandRegistry(),
-      stateProvider,
+      stateProvider(repo.reader),
       repo.writer,
     )
+
+  def newTester[S, C, E](info: StateInfo[S, E], commandSerializer: Serializer[C], repo: EventRepository) =
+    CommandTester(info, commandSerializer, dispatcher(repo), stateProvider(repo.reader))
 
   private val user1 = "user1"
   private val user2 = "user2"
 
   test("user aggregate") {
-    val test1 = {
+    val test1 = { (repo: EventRepository) =>
       import com.github.uharaqo.es.UserResource.*
-
-      val tester: CommandTester[User, UserCommand, UserEvent] =
-        CommandTester(info, commandSerializer, dispatcher, stateProvider)
+      val tester = newTester(info, commandSerializer, repo)
       import tester.*
 
       for
@@ -96,10 +99,9 @@ class EventSourcingSuite extends CatsEffectSuite {
       yield ()
     }
 
-    val test2 = {
+    val test2 = { (repo: EventRepository) =>
       import com.github.uharaqo.es.GroupResource.*
-      val tester: CommandTester[Group, GroupCommand, GroupEvent] =
-        CommandTester(info, commandSerializer, dispatcher, stateProvider)
+      val tester = newTester(info, commandSerializer, repo)
       import tester.*
 
       val id1   = "g1"
@@ -125,7 +127,7 @@ class EventSourcingSuite extends CatsEffectSuite {
       yield ()
     }
 
-    val projection =
+    val projection = { (repo: ProjectionRepository) =>
       ScheduledProjection(
         ProjectionProcessor(
           UserResource.info.eventDeserializer,
@@ -139,11 +141,14 @@ class EventSourcingSuite extends CatsEffectSuite {
         100 millis,
         100 millis,
       )
+    }
 
     (for
+      xa <- transactor
+      repo = repository(xa)
       _ <- Resource.eval(repo.initTables())
-      _ <- projection.start
-      _ <- Resource.eval(test1 >> test2)
+      _ <- projection(repo).start
+      _ <- Resource.eval(test1(repo) >> test2(repo))
       _ <- Resource.eval(IO.sleep(3 seconds))
     yield ())
       .use(_ => IO(ExitCode.Success))
