@@ -40,6 +40,12 @@ object Dependencies {
       "com.github.plokhotnyuk.jsoniter-scala" %% "jsoniter-scala-macros" % jsoniterVersion % "provided", // Use "provided" if "compile-internal" is not supported
     )
 
+  lazy val cacheDeps =
+    Seq(
+      "com.github.cb372" %% "scalacache-core" % "1.0.0-M6",
+      "com.github.cb372" %% "scalacache-caffeine" % "1.0.0-M6",
+    )
+
   lazy val doobieDeps =
     Seq(
       "org.tpolecat"  %% "doobie-core"     % doobieVersion,

@@ -30,7 +30,7 @@ lazy val eventSourcing =
     .settings(
       name := "event-sourcing",
       libraryDependencies ++=
-        fs2Deps ++ serializerDeps ++ doobieDeps
+        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
     )
 
 val root =

@@ -5,7 +5,7 @@ import fs2.Stream
 
 /** returns true on success; false on conflict */
 type EventWriter = Seq[EventRecord] => IO[Boolean]
-type EventReader = AggInfo => Stream[IO, VersionedEvent]
+type EventReader = (AggInfo, Version) => Stream[IO, VersionedEvent]
 
 trait EventRepository:
   val writer: EventWriter
