@@ -27,7 +27,10 @@ object GroupResource {
   import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec => _, _}
 
   /** for testing */
-  val commandSerializer: JsonValueCodec[GroupCommand] = JsonCodecMaker.make
+  val commandSerializer: Serializer[GroupCommand] = {
+    val serializer: JsonValueCodec[GroupCommand] = JsonCodecMaker.make
+    c => IO(writeToArray(c)(serializer))
+  }
 
   val deserializers: Map[Fqcn, Deserializer[GroupCommand]] = {
     def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =

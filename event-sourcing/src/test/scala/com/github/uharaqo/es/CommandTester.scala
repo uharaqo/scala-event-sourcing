@@ -9,18 +9,19 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 class CommandTester[S, C, E](
   info: StateInfo[S, E],
-  commandSerializer: JsonValueCodec[C],
+  commandSerializer: Serializer[C],
   dispatcher: CommandProcessor,
   stateProviderFactory: StateProviderFactory,
 ) {
   private val stateProvider = stateProviderFactory.create(info)
 
   def send(aggId: AggId, command: C): IO[Seq[EventRecord]] =
+    import cats.effect.unsafe.implicits.global
     send(
       CommandRequest(
         AggInfo(info.name, aggId),
         command.getClass().getCanonicalName(),
-        writeToArray(command)(commandSerializer),
+        commandSerializer(command).unsafeRunSync(),
       )
     )
 

@@ -2,13 +2,13 @@ package com.github.uharaqo.es
 
 import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
-import com.github.uharaqo.es.impl.repository.*
 import fs2.Stream
 import munit.*
 import scalacache.AbstractCache
 import scalacache.caffeine.CaffeineCache
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.uharaqo.es.impl.repository.*
 import doobie.util.transactor.Transactor
 
 import java.time.Instant
@@ -42,7 +42,7 @@ class EventSourcingSuite extends CatsEffectSuite {
       repo.writer,
     )
 
-  def newTester[S, C, E](info: StateInfo[S, E], commandSerializer: JsonValueCodec[C], repo: EventRepository) =
+  def newTester[S, C, E](info: StateInfo[S, E], commandSerializer: Serializer[C], repo: EventRepository) =
     CommandTester(info, commandSerializer, dispatcher(repo), stateProvider(repo.reader))
 
   private val user1 = "user1"

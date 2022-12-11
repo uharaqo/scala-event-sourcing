@@ -39,7 +39,10 @@ object UserResource {
   import com.github.plokhotnyuk.jsoniter_scala.macros._
 
   /** for testing */
-  val commandSerializer: JsonValueCodec[UserCommand] = JsonCodecMaker.make
+  val commandSerializer: Serializer[UserCommand] = {
+    val serializer: JsonValueCodec[UserCommand] = JsonCodecMaker.make
+    c => IO(writeToArray(c)(serializer))
+  }
 
   val deserializers: Map[Fqcn, Deserializer[UserCommand]] = {
     def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
