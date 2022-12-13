@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package com.github.uharaqo.es.example.proto;
+option java_multiple_files = true;
+
+message GroupCommand {
+  oneof sealed_value {
+    CreateGroup create_group = 1;
+    AddUser add_user = 2;
+  }
+}
+
+message GroupEvent {
+  oneof sealed_value {
+    GroupCreated group_created = 1;
+    UserAdded user_added = 2;
+  }
+}
+
+message CreateGroup {
+  string owner_id = 1;
+  string name = 2;
+}
+
+message GroupCreated {
+  string owner_id = 1;
+  string name = 2;
+}
+message AddUser {
+  string user_id = 1;
+}
+
+message UserAdded {
+  string user_id = 1;
+}
