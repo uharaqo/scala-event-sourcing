@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package com.github.uharaqo.es.proto;
+import "google/protobuf/any.proto";
+import "google/protobuf/wrappers.proto";
+
+service CommandHandler {
+  rpc Send (SendCommandRequest) returns (CommandReply) {}
+  rpc Load (LoadStateRequest) returns (StateReply) {}
+}
+
+message SendCommandRequest {
+  /** Aggregate type */
+  string aggregate = 1;
+  /** Aggregate ID */
+  string id = 2;
+  /** Command */
+  google.protobuf.Any payload = 3;
+}
+
+message CommandReply {
+  int64 version = 1;
+  string message = 2;
+}
+
+message LoadStateRequest {
+  /** Aggregate type */
+  string type = 1;
+  /** Aggregate ID */
+  string id = 2;
+  /** Minimum version (optional) */
+  google.protobuf.Int64Value min_version = 3;
+}
+
+message StateReply {
+  google.protobuf.Any result = 1;
+}

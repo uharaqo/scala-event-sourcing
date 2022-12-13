@@ -1,4 +1,4 @@
-package com.github.uharaqo.es
+package com.github.uharaqo.es.example
 
 import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
@@ -8,6 +8,7 @@ import scalacache.AbstractCache
 import scalacache.caffeine.CaffeineCache
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.plokhotnyuk.jsoniter_scala.core.JsonValueCodec
+import com.github.uharaqo.es.*
 import com.github.uharaqo.es.impl.repository.*
 import doobie.util.transactor.Transactor
 
@@ -23,18 +24,16 @@ class EventSourcingSuite extends CatsEffectSuite {
 
   private val stateProvider = (reader: EventReader) =>
     debug(
-      CachedStateProviderFactory(
-        EventReaderStateProviderFactory(reader),
-        ScalaCacheFactory(
-          new CacheFactory {
-            override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
-              CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
-          },
-          Some(Duration(86400, TimeUnit.SECONDS))
-        )
-      ).memoise
+      DefaultStateProviderFactory(
+        reader,
+        new CacheFactory {
+          override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
+            CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
+        },
+        86_400_000L
+      )
     )
-  private val dispatcher = (repo: EventRepository) =>
+  private val processor = (repo: EventRepository) =>
     CommandProcessor(
       UserResource.newCommandRegistry()
         ++ GroupResource.newCommandRegistry(),
@@ -43,15 +42,15 @@ class EventSourcingSuite extends CatsEffectSuite {
     )
 
   def newTester[S, C, E](info: StateInfo[S, E], commandSerializer: Serializer[C], repo: EventRepository) =
-    CommandTester(info, commandSerializer, dispatcher(repo), stateProvider(repo.reader))
+    CommandTester(info, commandSerializer, processor(repo), stateProvider(repo.reader))
 
   private val user1 = "user1"
   private val user2 = "user2"
 
   test("user aggregate") {
     val test1 = { (repo: EventRepository) =>
-      import com.github.uharaqo.es.example.proto.user.*
-      import com.github.uharaqo.es.UserResource.*
+      import com.github.uharaqo.es.proto.example.*
+      import com.github.uharaqo.es.example.UserResource.*
       val tester = newTester(info, commandSerializer, repo)
       import tester.*
 
@@ -101,8 +100,8 @@ class EventSourcingSuite extends CatsEffectSuite {
     }
 
     val test2 = { (repo: EventRepository) =>
-      import com.github.uharaqo.es.example.proto.group.*
-      import com.github.uharaqo.es.GroupResource.*
+      import com.github.uharaqo.es.proto.example.*
+      import com.github.uharaqo.es.example.GroupResource.*
       val tester = newTester(info, commandSerializer, repo)
       import tester.*
 

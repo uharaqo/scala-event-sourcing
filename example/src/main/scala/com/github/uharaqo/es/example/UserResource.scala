@@ -1,10 +1,12 @@
-package com.github.uharaqo.es
+package com.github.uharaqo.es.example
 
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.example.proto.user.*
-import com.github.uharaqo.es.impl.codec.JsonCodec
+import com.github.uharaqo.es.grpc.codec.*
+import com.github.uharaqo.es.proto.example.*
+import io.grpc.Status
+import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
 object UserResource {
 
@@ -34,16 +36,18 @@ object UserResource {
 
   /** for testing */
   val commandSerializer: Serializer[UserCommand] = c => IO(c.asMessage.toByteArray)
-  val deserializers: Map[Fqcn, Deserializer[UserCommand]] = {
-    def deserializer[C](c: Class[C]): (Fqcn, Deserializer[C]) =
-      (c.getCanonicalName().nn, bs => IO(UserCommandMessage.parseFrom(bs).toUserCommand.asNonEmpty.get.asInstanceOf[C]))
+
+  val deserializers: Map[Fqcn, Deserializer[UserCommand]] =
+    def deserializer[A <: GeneratedMessage](clazz: Class[A])(implicit cmp: GeneratedMessageCompanion[A]) =
+      clazz.getCanonicalName().nn -> PbDeserializer[A]
 
     Seq(
-      classOf[RegisterUser],
-      classOf[AddPoint],
-      classOf[SendPoint],
-    ).map(deserializer).toMap
-  }
+      deserializer(classOf[RegisterUser]),
+      deserializer(classOf[AddPoint]),
+      deserializer(classOf[SendPoint]),
+    ).toMap
+
+  // import com.github.uharaqo.es.grpc.codec.JsonCodec
 //  val commandSerializer: Serializer[UserCommand] = {
 //    val serializer: JsonValueCodec[UserCommand] = JsonCodecMaker.make
 //    c => IO(writeToArray(c)(serializer))
@@ -77,7 +81,7 @@ object UserResource {
         s.copy(point = s.point + point)
   }
 
-  private val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
+  val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
     import ctx.*
     s match
       case User.EMPTY =>
@@ -124,5 +128,5 @@ object UserResource {
   }
 
   def newCommandRegistry(): CommandRegistry =
-    CommandRegistry(info, deserializers, debug(commandHandler))
+    CommandRegistry(info, deserializers, commandHandler)
 }

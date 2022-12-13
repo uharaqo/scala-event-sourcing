@@ -52,6 +52,17 @@ trait StateCache[S]:
 trait StateCacheFactory:
   def create[S, E](info: StateInfo[S, E]): StateCache[S]
 
+object DefaultStateProviderFactory {
+  import java.util.concurrent.TimeUnit
+  import scala.concurrent.duration.Duration
+
+  def apply(eventReader: EventReader, cacheFactory: CacheFactory, ttlMillis: Long) =
+    CachedStateProviderFactory(
+      EventReaderStateProviderFactory(eventReader),
+      ScalaCacheFactory(cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
+    ).memoise
+}
+
 class CachedStateProviderFactory(
   originalFactory: StateProviderFactory,
   cacheFactory: StateCacheFactory
