@@ -1,10 +1,11 @@
-package com.github.uharaqo.es
+package com.github.uharaqo.es.example
 
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.example.proto.group.*
-import com.github.uharaqo.es.impl.codec.JsonCodec
+import com.github.uharaqo.es.proto.example.*
+import com.github.uharaqo.es.grpc.codec.*
+import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
 object GroupResource {
   import GroupResource.*
@@ -29,31 +30,22 @@ object GroupResource {
 
   /** for testing */
   val commandSerializer: Serializer[GroupCommand] = c => IO(c.asMessage.toByteArray)
-  //  val commandSerializer: Serializer[GroupCommand] = {
-//    val serializer: JsonValueCodec[GroupCommand] = JsonCodecMaker.make
-//    c => IO(writeToArray(c)(serializer))
-//  }
 
   val deserializers: Map[Fqcn, Deserializer[GroupCommand]] = {
-    def deserializer[C](c: Class[C]): (Fqcn, Deserializer[C]) =
-      (
-        c.getCanonicalName().nn,
-        bs => IO(GroupCommandMessage.parseFrom(bs).toGroupCommand.asNonEmpty.get.asInstanceOf[C])
-      )
-
+    def deserializer[A <: GeneratedMessage](clazz: Class[A])(implicit cmp: GeneratedMessageCompanion[A]) =
+      clazz.getCanonicalName().nn -> PbDeserializer[A]
     Seq(
-      classOf[AddUser],
-      classOf[CreateGroup],
-    ).map(deserializer).toMap
+      deserializer(classOf[CreateGroup]),
+      deserializer(classOf[AddUser]),
+    ).toMap
+
+    //   def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
+    //     (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
+    //   Map(
+    //     deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
+    //     deserializer(classOf[AddUser])(JsonCodecMaker.make),
+    //   )
   }
-  // val deserializers: Map[Fqcn, Deserializer[GroupCommand]] = {
-  //   def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
-  //     (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
-  //   Map(
-  //     deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
-  //     deserializer(classOf[AddUser])(JsonCodecMaker.make),
-  //   )
-  // }
 
   private val eventHandler: EventHandler[Group, GroupEvent] = { (s, e) =>
     e.asNonEmpty.get match
@@ -111,5 +103,5 @@ object GroupResource {
   }
 
   def newCommandRegistry(): CommandRegistry =
-    CommandRegistry(info, deserializers, debug(commandHandler))
+    CommandRegistry(info, deserializers, commandHandler)
 }

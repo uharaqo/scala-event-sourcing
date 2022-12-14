@@ -15,4 +15,6 @@ case class CommandRegistryEntry[S, C, E](
   handler: CommandHandler[S, C, E],
 )
 
-case class CommandRequest(info: AggInfo, name: Fqcn, command: Bytes)
+case class CommandRequest(info: AggInfo, name: Fqcn, payload: Bytes)
+
+case class CommandResult(version: Version, message: String)

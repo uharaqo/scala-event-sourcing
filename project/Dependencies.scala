@@ -1,9 +1,11 @@
 import sbt._
 
 object Dependencies {
-  val fs2Version      = "3.4.0"
-  val doobieVersion   = "1.0.0-RC2"
-  val jsoniterVersion = "2.18.1"
+  val fs2Version        = "3.4.0"
+  val doobieVersion     = "1.0.0-RC2"
+  val jsoniterVersion   = "2.18.1"
+  val scalaPbVersion    = "0.11.12"
+  val scalaCacheVersion = "1.0.0-M6"
 
   lazy val commonDeps =
     Seq(
@@ -42,8 +44,8 @@ object Dependencies {
 
   lazy val cacheDeps =
     Seq(
-      "com.github.cb372" %% "scalacache-core" % "1.0.0-M6",
-      "com.github.cb372" %% "scalacache-caffeine" % "1.0.0-M6",
+      "com.github.cb372" %% "scalacache-core"     % scalaCacheVersion,
+      "com.github.cb372" %% "scalacache-caffeine" % scalaCacheVersion,
     )
 
   lazy val doobieDeps =
@@ -53,5 +55,16 @@ object Dependencies {
       "org.tpolecat"  %% "doobie-postgres" % doobieVersion,
       "org.tpolecat"  %% "doobie-h2"       % doobieVersion,
       "org.postgresql" % "postgresql"      % "42.5.1",
+    )
+
+  lazy val protoDeps =
+    Seq(
+      "com.thesamet.scalapb" %% "compilerplugin"  % scalaPbVersion,
+      "com.thesamet.scalapb" %% "scalapb-runtime" % scalaPbVersion % "protobuf"
+    )
+
+  lazy val grpcDeps =
+    protoDeps ++ Seq(
+      "io.grpc" % "grpc-netty-shaded" % "1.51.0",
     )
 }

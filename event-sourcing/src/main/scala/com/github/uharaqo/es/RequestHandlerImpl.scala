@@ -20,7 +20,7 @@ object CommandProcessor {
   ): CommandProcessor = { request =>
     val id          = request.info.id
     val commandName = request.name
-    val rawCommand  = request.command
+    val rawCommand  = request.payload
 
     for
       entry   <- IO.fromOption(commandRegistry.get(commandName))(InvalidCommand(commandName))

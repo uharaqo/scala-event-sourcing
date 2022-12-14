@@ -1,8 +1,9 @@
-package com.github.uharaqo.es
+package com.github.uharaqo.es.example
 
 import cats.effect.*
 import cats.implicits.*
 import com.github.plokhotnyuk.jsoniter_scala.core.*
+import com.github.uharaqo.es.*
 import munit.Assertions.*
 
 import java.nio.charset.StandardCharsets.UTF_8

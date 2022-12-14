@@ -24,11 +24,26 @@ val baseSettings =
     scalafmtOnCompile        := true,
   )
 
-lazy val proto =
-  (project in file("proto"))
+lazy val eventSourcingGrpc =
+  (project in file("event-sourcing-grpc"))
     .settings(baseSettings)
-    .settings(name := "proto")
+    .settings(
+      name := "event-sourcing-grpc",
+      libraryDependencies ++= grpcDeps
+    )
     .enablePlugins(Fs2Grpc)
+
+lazy val exampleProto =
+  (project in file("example-proto"))
+    .settings(baseSettings)
+    .settings(
+      name := "example-proto",
+      Compile / PB.targets :=
+        Seq(
+          scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"
+        ),
+      libraryDependencies ++= protoDeps
+    )
 
 lazy val eventSourcing =
   (project in file("event-sourcing"))
@@ -38,8 +53,17 @@ lazy val eventSourcing =
       libraryDependencies ++=
         fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
     )
-    .dependsOn(proto)
+
+lazy val example =
+  (project in file("example"))
+    .settings(baseSettings)
+    .settings(
+      name := "example",
+      libraryDependencies ++=
+        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
+    )
+    .dependsOn(eventSourcing, eventSourcingGrpc, exampleProto)
 
 val root =
   (project in file("."))
-    .aggregate(proto, eventSourcing)
+    .aggregate(eventSourcingGrpc, eventSourcing, example)
