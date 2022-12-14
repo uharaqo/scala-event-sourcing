@@ -39,12 +39,12 @@ object GroupResource {
       deserializer(classOf[AddUser]),
     ).toMap
 
-  //   def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
-  //     (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
-  //   Map(
-  //     deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
-  //     deserializer(classOf[AddUser])(JsonCodecMaker.make),
-  //   )
+    //   def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
+    //     (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
+    //   Map(
+    //     deserializer(classOf[CreateGroup])(JsonCodecMaker.make),
+    //     deserializer(classOf[AddUser])(JsonCodecMaker.make),
+    //   )
   }
 
   private val eventHandler: EventHandler[Group, GroupEvent] = { (s, e) =>
