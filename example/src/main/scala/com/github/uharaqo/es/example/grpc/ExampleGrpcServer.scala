@@ -2,8 +2,8 @@ package com.github.uharaqo.es.example.grpc
 
 import cats.effect.{ExitCode, IO, IOApp, Resource}
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.example.{GroupResource, UserResource}
-import com.github.uharaqo.es.grpc.server.GrpcServer
+import com.github.uharaqo.es.example.*
+import com.github.uharaqo.es.grpc.server.{GrpcAggregateInfo, GrpcServer}
 import com.github.uharaqo.es.impl.repository.{DoobieEventRepository, H2TransactorFactory}
 import com.github.uharaqo.es.proto.eventsourcing.*
 import com.github.uharaqo.es.proto.example.*
@@ -11,9 +11,13 @@ import doobie.util.transactor.Transactor
 import io.grpc.{Metadata, Status}
 
 object Server extends IOApp {
+  private val userDependencies  = new UserResource.Dependencies {}
+  private val groupDependencies = new GroupResource.Dependencies {}
+  private def registryFactory[D] = (info: GrpcAggregateInfo[_, _, _, D], dep: D) =>
+    info.commandRegistry(dep).view.mapValues(a => a.copy(handler = debug(a.handler)))
   private val registry =
-    (UserResource.newCommandRegistry().view.mapValues(a => a.copy(handler = debug(a.handler)))
-      ++ GroupResource.newCommandRegistry().view.mapValues(a => a.copy(handler = debug(a.handler)))).toMap
+    (registryFactory(UserResource.info, userDependencies)
+      ++ registryFactory(GroupResource.info, groupDependencies)).toMap
   private val transactor = H2TransactorFactory.create()
   private val repository = (xa: Transactor[IO]) => DoobieEventRepository(xa)
   private val processor  = (repo: EventRepository) => GrpcCommandProcessor(registry, repo)
@@ -27,7 +31,7 @@ object Server extends IOApp {
   private val server =
     (processor: GrpcCommandProcessor) =>
       GrpcServer(
-        new CommandHandlerFs2Grpc[IO, Metadata] {
+        new GrpcCommandHandlerFs2Grpc[IO, Metadata] {
           override def send(request: SendCommandRequest, ctx: Metadata): IO[CommandReply] =
             for
               parsed <- parser(request)

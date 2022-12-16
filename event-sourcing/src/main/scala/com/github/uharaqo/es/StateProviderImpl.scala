@@ -19,7 +19,7 @@ extension [S, E](info: StateInfo[S, E]) {
           prev  <- prevState
           event <- info.eventDeserializer(e.event)
           next  <- IO.pure(info.eventHandler(prev.state, event))
-        yield VersionedState(prev.version + 1, next)
+        yield next.map(VersionedState(prev.version + 1, _)).getOrElse(prev)
       }
       .flatten
 }
@@ -56,7 +56,7 @@ object DefaultStateProviderFactory {
   import java.util.concurrent.TimeUnit
   import scala.concurrent.duration.Duration
 
-  def apply(eventReader: EventReader, cacheFactory: CacheFactory, ttlMillis: Long) =
+  def apply(eventReader: EventReader, cacheFactory: CacheFactory, ttlMillis: Long): StateProviderFactory =
     CachedStateProviderFactory(
       EventReaderStateProviderFactory(eventReader),
       ScalaCacheFactory(cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
@@ -88,6 +88,7 @@ class CachedStateProviderFactory(
 }
 
 import scalacache.*
+
 import scala.concurrent.duration.Duration
 
 trait CacheFactory:

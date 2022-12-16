@@ -4,7 +4,7 @@ package com.github.uharaqo.es.proto;
 import "google/protobuf/any.proto";
 import "google/protobuf/wrappers.proto";
 
-service CommandHandler {
+service GrpcCommandHandler {
   rpc Send (SendCommandRequest) returns (CommandReply) {}
   rpc Load (LoadStateRequest) returns (StateReply) {}
 }
