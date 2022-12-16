@@ -9,7 +9,7 @@ import com.github.uharaqo.es.proto.example.*
 object UserResource {
 
   object UserCommandHandler {
-    def apply(h: PartialCommandHandler[User, UserCommandMessage, UserEventMessage]) = h
+    def apply(h: SelectiveCommandHandler[User, UserCommandMessage, UserEventMessage]) = h
   }
 
   lazy val info =
@@ -89,18 +89,7 @@ object UserResource {
         s.copy(point = s.point + point).some
   }
 
-  private val commandHandler = PartialCommandHandler.toCommandHandler(Seq(registerUser, addPoint, sendPoint))
+  private val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(registerUser, addPoint, sendPoint))
 
   trait Dependencies {}
-}
-
-trait PartialCommandHandler[S, C, E] {
-  def handle(s: S, c: C, ctx: CommandHandlerContext[S, E]): Option[IO[Seq[EventRecord]]]
-}
-
-object PartialCommandHandler {
-  def toCommandHandler[S, C, E, D](handlers: Seq[D => PartialCommandHandler[S, C, E]]): D => CommandHandler[S, C, E] = {
-    dep => (s, c, ctx) =>
-      handlers.map(_(dep)).map(_.handle(s, c, ctx)).find(_.isDefined).flatten.getOrElse(IO.pure(Seq.empty))
-  }
 }

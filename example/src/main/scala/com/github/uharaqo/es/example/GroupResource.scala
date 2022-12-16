@@ -10,7 +10,7 @@ import com.github.uharaqo.es.proto.example.UserEvent.Empty
 object GroupResource {
 
   object GroupCommandHandler {
-    def apply(h: PartialCommandHandler[Group, GroupCommandMessage, GroupEventMessage]) = h
+    def apply(h: SelectiveCommandHandler[Group, GroupCommandMessage, GroupEventMessage]) = h
   }
 
   lazy val info =
@@ -71,7 +71,7 @@ object GroupResource {
       }
     }
 
-  private val commandHandler = PartialCommandHandler.toCommandHandler(Seq(createGroup, addUser))
+  private val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(createGroup, addUser))
 
   trait Dependencies {}
 }

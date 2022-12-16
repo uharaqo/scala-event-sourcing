@@ -28,3 +28,13 @@ class DefaultCommandHandlerContext[S, E](
       ress <- handler(verS.state, ctx)
     yield ress
 }
+
+type SelectiveCommandHandler[S, C, E] = (s: S, c: C, ctx: CommandHandlerContext[S, E]) => Option[IO[Seq[EventRecord]]]
+
+object SelectiveCommandHandler {
+  def toCommandHandler[S, C, E, D](
+    handlers: Seq[D => SelectiveCommandHandler[S, C, E]]
+  ): D => CommandHandler[S, C, E] = { dep => (s, c, ctx) =>
+    handlers.map(_(dep)).map(_(s, c, ctx)).find(_.isDefined).flatten.getOrElse(IO.pure(Seq.empty))
+  }
+}
