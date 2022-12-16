@@ -3,6 +3,7 @@ package com.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.*
+import com.github.uharaqo.es.grpc.codec.PbCodec
 import com.github.uharaqo.es.grpc.server.{savePb, GrpcAggregateInfo}
 import com.github.uharaqo.es.proto.example.*
 import com.github.uharaqo.es.proto.example.UserEvent.Empty
@@ -16,8 +17,8 @@ object GroupResource {
   lazy val info =
     GrpcAggregateInfo("group", Group.EMPTY, GroupCommandMessage.scalaDescriptor, eventHandler, commandHandler)
 
-  implicit val eMapper: GroupEvent => GroupEventMessage     = _.asMessage
-  implicit val cMapper: GroupCommand => GroupCommandMessage = _.asMessage
+  implicit val eMapper: GroupEvent => GroupEventMessage     = PbCodec.toPbMessage(_)
+  implicit val cMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage(_)
 
   // state
   case class Group(ownerId: String, name: String, users: Set[String])

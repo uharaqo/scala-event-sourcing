@@ -4,6 +4,7 @@ import cats.effect.*
 import cats.implicits.*
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.github.uharaqo.es.*
+import com.github.uharaqo.es.grpc.server.GrpcAggregateInfo
 import munit.Assertions.*
 import scalapb.GeneratedMessage
 
@@ -21,9 +22,9 @@ class CommandTester[S, C <: GeneratedMessage, E](
     val p = com.google.protobuf.any.Any.pack(command)
     send(
       CommandRequest(
-        AggInfo(info.name, aggId),
-        p.typeUrl.split('/').last,
-        p.value.toByteArray()
+        info = AggInfo(info.name, aggId),
+        name = p.typeUrl.split('/').last,
+        payload = p.value.toByteArray(),
       )
     )
 
@@ -65,6 +66,14 @@ class CommandTester[S, C <: GeneratedMessage, E](
           intercept[EsException.CommandHandlerFailure](())
       }
   }
+}
+
+extension [S, C <: GeneratedMessage, E <: GeneratedMessage, D](info: GrpcAggregateInfo[S, C, E, D]) {
+  def newTester(
+    processor: CommandProcessor,
+    stateProviderFactory: StateProviderFactory
+  ): CommandTester[S, C, E] =
+    CommandTester(info.stateInfo, processor, stateProviderFactory)
 }
 
 def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =

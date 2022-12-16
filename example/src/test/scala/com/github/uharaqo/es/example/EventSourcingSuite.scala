@@ -35,7 +35,7 @@ class EventSourcingSuite extends CatsEffectSuite {
       val projection =
         ScheduledProjection(
           ProjectionProcessor(
-            info.eventDeserializer,
+            info.eventCodec.deserializer,
             r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
             2,
             1 seconds
@@ -143,9 +143,6 @@ class EventSourcingSuite extends CatsEffectSuite {
 }
 
 object EventSourcingSuite {
-  private val transactor =
-    H2TransactorFactory.create()
-    // PostgresTransactorFactory.create()
 
   val cacheFactory = new CacheFactory {
     override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
@@ -154,19 +151,11 @@ object EventSourcingSuite {
 
   def run(task: Transactor[IO] => Resource[IO, Unit]) =
     (for
-      xa <- transactor
-      _  <- Resource.eval(DoobieEventRepository(xa).initTables())
+      xa <- H2TransactorFactory.create()
+//      xa <- PostgresTransactorFactory.create()
+      _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
       _ <- task(xa)
-      _ <- Resource.eval(IO.sleep(3 seconds))
     yield ())
       .use(_ => IO(ExitCode.Success))
-}
-
-extension [S, C <: GeneratedMessage, E <: GeneratedMessage, D](info: GrpcAggregateInfo[S, C, E, D]) {
-  def newTester(
-    processor: CommandProcessor,
-    stateProviderFactory: StateProviderFactory
-  ): CommandTester[S, C, E] =
-    CommandTester(info.stateInfo, processor, stateProviderFactory)
 }

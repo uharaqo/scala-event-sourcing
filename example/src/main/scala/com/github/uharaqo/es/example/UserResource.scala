@@ -3,6 +3,7 @@ package com.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.*
+import com.github.uharaqo.es.grpc.codec.PbCodec
 import com.github.uharaqo.es.grpc.server.{savePb, GrpcAggregateInfo}
 import com.github.uharaqo.es.proto.example.*
 
@@ -14,14 +15,17 @@ object UserResource {
 
   lazy val info =
     GrpcAggregateInfo("user", User.EMPTY, UserCommandMessage.scalaDescriptor, eventHandler, commandHandler)
-  implicit val eMapper: UserEvent => UserEventMessage     = _.asMessage
-  implicit val cMapper: UserCommand => UserCommandMessage = _.asMessage
+
+  implicit val eMapper: UserEvent => UserEventMessage     = PbCodec.toPbMessage(_)
+  implicit val cMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage(_)
 
   // state
   case class User(name: String, point: Int)
 
   object User:
     val EMPTY = User("", 0)
+
+  private lazy val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(registerUser, addPoint, sendPoint))
 
   private val registerUser = (dep: Dependencies) =>
     UserCommandHandler { (s, c, ctx) =>
@@ -88,8 +92,6 @@ object UserResource {
       case PointReceived(senderId, point, unknownFields) =>
         s.copy(point = s.point + point).some
   }
-
-  private val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(registerUser, addPoint, sendPoint))
 
   trait Dependencies {}
 }

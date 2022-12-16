@@ -1,7 +1,7 @@
 package com.github.uharaqo.es.grpc.server
 
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.grpc.codec.{PbDeserializer, PbSerializer}
+import com.github.uharaqo.es.grpc.codec.PbCodec
 import scalapb.descriptors.Descriptor
 import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
@@ -13,11 +13,11 @@ class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
   commandHandler: D => CommandHandler[S, C, E],
 )(using eCmp: GeneratedMessageCompanion[E], cCmp: GeneratedMessageCompanion[C]) {
 
-  val eventSerializer   = PbSerializer[E]
-  val eventDeserializer = PbDeserializer[E]
-  val stateInfo         = StateInfo(name, emptyState, eventSerializer, eventDeserializer, eventHandler)
+  val eventCodec   = PbCodec[E]
+  val commandCodec = PbCodec[C]
+  val stateInfo    = StateInfo(name, emptyState, eventCodec.serializer, eventCodec.deserializer, eventHandler)
 
-  val commandDeserializer = Map(commandMessageScalaDescriptor.fullName -> PbDeserializer[C])
+  val commandDeserializer = Map(commandMessageScalaDescriptor.fullName -> commandCodec.deserializer)
   val commandRegistry     = (dep: D) => CommandRegistry(stateInfo, commandDeserializer, commandHandler(dep))
 }
 
