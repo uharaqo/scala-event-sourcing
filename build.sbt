@@ -1,4 +1,4 @@
-import Dependencies._
+import Dependencies.*
 
 scalaVersion := "3.2.1"
 organization := "com.github.uharaqo"
@@ -68,3 +68,12 @@ lazy val example =
 val root =
   (project in file("."))
     .aggregate(eventSourcingGrpc, eventSourcing, example)
+
+inThisBuild(
+  List(
+    organization := "com.github.uharaqo",
+    homepage     := Some(url("https://github.com/uharaqo/scala-event-sourcing")),
+    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    developers   := List(Developer("uharaqo", "uharaqo"))
+  )
+)
