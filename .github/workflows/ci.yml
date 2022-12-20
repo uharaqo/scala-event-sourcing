@@ -38,6 +38,3 @@ jobs:
             exit 1
         esac        
       shell: bash
-
-    - name: clean up
-      run: "${GITHUB_WORKSPACE}/.github/clean-up.sh"
