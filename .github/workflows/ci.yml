@@ -25,6 +25,8 @@ jobs:
       with:
         java-version: "openjdk@1.${{ matrix.java }}.0"
 
+    - uses: coursier/cache-action@v6
+
     - name: Build and test
       run: |
         case ${{ matrix.jobtype }} in
@@ -36,3 +38,6 @@ jobs:
             exit 1
         esac        
       shell: bash
+
+    - name: clean up
+      run: "${GITHUB_WORKSPACE}/.github/clean-up.sh"
