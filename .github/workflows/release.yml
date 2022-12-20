@@ -53,7 +53,7 @@ jobs:
     - name: Setup
       uses: olafurpg/setup-scala@v13
       with:
-        java-version: "openjdk@1.${{ matrix.java }}.0"
+        java-version: "openjdk@1.17.0"
 
     - uses: coursier/cache-action@v6
 
