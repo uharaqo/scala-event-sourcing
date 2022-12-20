@@ -74,6 +74,8 @@ inThisBuild(
     organization := "com.github.uharaqo",
     homepage     := Some(url("https://github.com/uharaqo/scala-event-sourcing")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
-    developers   := List(Developer("uharaqo", "uharaqo"))
+    developers := List(
+      Developer("uharaqo", "uharaqo", "uharaqo@users.noreply.github.com", url("https://github.com/uharaqo"))
+    )
   )
 )
