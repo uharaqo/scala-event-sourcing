@@ -57,7 +57,7 @@ jobs:
 
     - uses: coursier/cache-action@v6
 
-    # - uses: olafurpg/setup-gpg@v3
+    - uses: olafurpg/setup-gpg@v3
 
     - name: Release
       run: sbt -v ci-release
