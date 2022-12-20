@@ -3,27 +3,24 @@ package com.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.grpc.codec.*
+import com.github.uharaqo.es.grpc.codec.PbCodec
+import com.github.uharaqo.es.grpc.server.{savePb, GrpcAggregateInfo}
 import com.github.uharaqo.es.proto.example.*
-import io.grpc.Status
-import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
 object UserResource {
 
-  import UserResource.*
+  type UserCommandHandler = SelectiveCommandHandler[User, UserCommandMessage, UserEventMessage]
+  implicit val eMapper: UserEvent => UserEventMessage     = PbCodec.toPbMessage
+  implicit val cMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
-//  // commands
-//  sealed trait UserCommand
-//  case class RegisterUser(name: String) extends UserCommand
-//  case class AddPoint(point: Int) extends UserCommand
-//  case class SendPoint(recipientId: String, point: Int) extends UserCommand
-//
-//  // events
-//  sealed trait UserEvent
-//  case class UserRegistered(name: String) extends UserEvent
-//  case class PointAdded(point: Int) extends UserEvent
-//  case class PointSent(recipientId: String, point: Int) extends UserEvent
-//  case class PointReceived(senderId: String, point: Int) extends UserEvent
+  lazy val info =
+    GrpcAggregateInfo(
+      "user",
+      User.EMPTY,
+      UserCommandMessage.scalaDescriptor,
+      eventHandler,
+      (deps: Dependencies) => debug(commandHandler(deps))
+    )
 
   // state
   case class User(name: String, point: Int)
@@ -31,102 +28,69 @@ object UserResource {
   object User:
     val EMPTY = User("", 0)
 
-  import com.github.plokhotnyuk.jsoniter_scala.core.{JsonCodec as _, *}
-  import com.github.plokhotnyuk.jsoniter_scala.macros.*
+  private lazy val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(registerUser, addPoint, sendPoint))
 
-  /** for testing */
-  val commandSerializer: Serializer[UserCommand] = c => IO(c.asMessage.toByteArray)
+  private val registerUser: Dependencies => UserCommandHandler = deps => { (s, c, ctx) =>
+    c.sealedValue.registerUser.map { c =>
+      s match
+        case User.EMPTY =>
+          ctx.savePb(UserRegistered(c.name))
 
-  val deserializers: Map[Fqcn, Deserializer[UserCommand]] =
-    def deserializer[A <: GeneratedMessage](clazz: Class[A])(implicit cmp: GeneratedMessageCompanion[A]) =
-      clazz.getCanonicalName().nn -> PbDeserializer[A]
+        case User(name, point) =>
+          ctx.fail(IllegalStateException("Already registered"))
+    }
+  }
 
-    Seq(
-      deserializer(classOf[RegisterUser]),
-      deserializer(classOf[AddPoint]),
-      deserializer(classOf[SendPoint]),
-    ).toMap
+  private val addPoint: Dependencies => UserCommandHandler = deps => { (s, c, ctx) =>
+    c.sealedValue.addPoint.map { c =>
+      s match
+        case User.EMPTY =>
+          ctx.fail(IllegalStateException("User not found"))
 
-  // import com.github.uharaqo.es.grpc.codec.JsonCodec
-//  val commandSerializer: Serializer[UserCommand] = {
-//    val serializer: JsonValueCodec[UserCommand] = JsonCodecMaker.make
-//    c => IO(writeToArray(c)(serializer))
-//  }
-//
-//  val deserializers: Map[Fqcn, Deserializer[UserCommand]] = {
-//    def deserializer[C](c: Class[C])(implicit codec: JsonValueCodec[C]): (Fqcn, Deserializer[C]) =
-//      (c.getCanonicalName().nn, JsonCodec[C]().deserializer)
-//
-//    Map(
-//      deserializer(classOf[RegisterUser])(JsonCodecMaker.make),
-//      deserializer(classOf[AddPoint])(JsonCodecMaker.make),
-//      deserializer(classOf[SendPoint])(JsonCodecMaker.make),
-//    )
-//  }
+        case User(name, point) =>
+          ctx.savePb(PointAdded(c.point))
+    }
+  }
 
-  private val eventHandler: EventHandler[User, UserEvent] = { (s, e) =>
-    e.asNonEmpty.get match
+  private val sendPoint: Dependencies => UserCommandHandler = deps => { (s, c, ctx) =>
+    c.sealedValue.sendPoint.map { c =>
+      s match
+        case User.EMPTY =>
+          ctx.fail(IllegalStateException("User not found"))
+
+        case User(name, point) =>
+          if (point < c.point) //
+            ctx.fail(IllegalStateException("Point Shortage"))
+          else
+            val senderId = ctx.id
+            for
+              sent <- ctx.savePb(PointSent(c.recipientId, c.point))
+              received <- ctx.withState(ctx.info, c.recipientId) { (s2, ctx2) =>
+                if (s2 == User.EMPTY)
+                  ctx2.fail(IllegalStateException("User not found"))
+                else
+                  ctx2.savePb(PointReceived(senderId, c.point))
+              }
+            yield sent ++ received
+    }
+  }
+
+  private val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
+    e.toUserEvent.asNonEmpty.get match
       case UserRegistered(name, unknownFields) =>
         s match
-          case User.EMPTY => User(name, 0)
+          case User.EMPTY => User(name, 0).some
           case _          => throw EsException.UnexpectedException
 
       case PointAdded(point, unknownFields) =>
-        s.copy(point = s.point + point)
+        s.copy(point = s.point + point).some
 
       case PointSent(recipientId, point, unknownFields) =>
-        s.copy(point = s.point - point)
+        s.copy(point = s.point - point).some
 
       case PointReceived(senderId, point, unknownFields) =>
-        s.copy(point = s.point + point)
+        s.copy(point = s.point + point).some
   }
 
-  val commandHandler: CommandHandler[User, UserCommand, UserEvent] = { (s, c, ctx) =>
-    import ctx.*
-    s match
-      case User.EMPTY =>
-        c.asNonEmpty.get match
-          case RegisterUser(name, unknownFields) =>
-            save(UserRegistered(name))
-
-          case _ =>
-            fail(IllegalStateException("User not found"))
-
-      case User(name, point) =>
-        c.asNonEmpty.get match
-          case RegisterUser(name, unknownFields) =>
-            fail(IllegalStateException("Already registered"))
-
-          case AddPoint(point, unknownFields) =>
-            save(PointAdded(point))
-
-          case SendPoint(recipientId, point, unknownFields) =>
-            if (s.point < point) //
-              fail(IllegalStateException("Point Shortage"))
-            else
-              val senderId = ctx.id
-              for
-                sent <- save(PointSent(recipientId, point))
-                received <- withState(UserResource.info, recipientId) { (s, ctx2) =>
-                  if (s == User.EMPTY)
-                    ctx.fail(IllegalStateException("User not found"))
-                  else
-                    ctx2.save(PointReceived(senderId, point))
-                }
-              yield sent ++ received
-  }
-
-  val info: StateInfo[User, UserEvent] = {
-//    import com.github.plokhotnyuk.jsoniter_scala.core.*
-//    import com.github.plokhotnyuk.jsoniter_scala.macros.*
-//    implicit val codec = JsonCodecMaker.make[UserEvent]
-//    val eventCodec     = JsonCodec()
-    val serializer: Serializer[UserEvent]     = o => IO(o.asMessage.toByteArray)
-    val deserializer: Deserializer[UserEvent] = bs => IO(UserEventMessage.parseFrom(bs).toUserEvent)
-
-    StateInfo("user", User.EMPTY, serializer, deserializer, eventHandler)
-  }
-
-  def newCommandRegistry(): CommandRegistry =
-    CommandRegistry(info, deserializers, commandHandler)
+  trait Dependencies {}
 }

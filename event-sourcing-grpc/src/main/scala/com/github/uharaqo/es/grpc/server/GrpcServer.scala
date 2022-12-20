@@ -7,12 +7,12 @@ import io.grpc.Metadata
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder
 
 class GrpcServer(
-  service: CommandHandlerFs2Grpc[IO, Metadata],
+  service: GrpcCommandHandlerFs2Grpc[IO, Metadata],
   serverBuilder: NettyServerBuilder = NettyServerBuilder.forPort(50051),
 ) {
 
   def start: IO[ExitCode] =
-    CommandHandlerFs2Grpc
+    GrpcCommandHandlerFs2Grpc
       .bindServiceResource[IO](service)
       .use { s =>
         serverBuilder.addService(s).resource[IO].evalMap(server => IO(server.start())).useForever

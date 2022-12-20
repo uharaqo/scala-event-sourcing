@@ -2,8 +2,8 @@ package com.github.uharaqo.es.example.grpc
 
 import cats.effect.{ExitCode, IO, IOApp, Resource}
 import com.github.uharaqo.es.*
-import com.github.uharaqo.es.example.{GroupResource, UserResource}
-import com.github.uharaqo.es.grpc.server.GrpcServer
+import com.github.uharaqo.es.example.*
+import com.github.uharaqo.es.grpc.server.{GrpcAggregateInfo, GrpcServer}
 import com.github.uharaqo.es.impl.repository.{DoobieEventRepository, H2TransactorFactory}
 import com.github.uharaqo.es.proto.eventsourcing.*
 import com.github.uharaqo.es.proto.example.*
@@ -11,12 +11,17 @@ import doobie.util.transactor.Transactor
 import io.grpc.{Metadata, Status}
 
 object Server extends IOApp {
-  private val registry =
-    (UserResource.newCommandRegistry().view.mapValues(a => a.copy(handler = debug(a.handler)))
-      ++ GroupResource.newCommandRegistry().view.mapValues(a => a.copy(handler = debug(a.handler)))).toMap
+  private val userDeps  = (xa: Transactor[IO]) => new UserResource.Dependencies {}
+  private val groupDeps = (xa: Transactor[IO]) => new GroupResource.Dependencies {}
+
   private val transactor = H2TransactorFactory.create()
+  private def registryFactory[D] = (info: GrpcAggregateInfo[_, _, _, D], dep: D) =>
+    info.commandRegistry(dep).view.mapValues(a => a.copy(handler = debug(a.handler)))
+  private val registry = (xa: Transactor[IO]) =>
+    (registryFactory(UserResource.info, userDeps(xa))
+      ++ registryFactory(GroupResource.info, groupDeps(xa))).toMap
   private val repository = (xa: Transactor[IO]) => DoobieEventRepository(xa)
-  private val processor  = (repo: EventRepository) => GrpcCommandProcessor(registry, repo)
+  private val processor  = (repo: EventRepository, registry: CommandRegistry) => GrpcCommandProcessor(registry, repo)
   private val parser: SendCommandRequest => IO[CommandRequest] = { req =>
     IO {
       val p = req.payload.get
@@ -27,25 +32,37 @@ object Server extends IOApp {
   private val server =
     (processor: GrpcCommandProcessor) =>
       GrpcServer(
-        new CommandHandlerFs2Grpc[IO, Metadata] {
+        new GrpcCommandHandlerFs2Grpc[IO, Metadata] {
           override def send(request: SendCommandRequest, ctx: Metadata): IO[CommandReply] =
-            for
+            (for
               parsed <- parser(request)
               result <- processor.command(parsed)
-            yield CommandReply(result.version, result.message)
+            yield CommandReply(result.version, result.message))
+              .handleErrorWith(errorHandler)
 
           override def load(request: LoadStateRequest, ctx: Metadata): IO[StateReply] = ???
         }
       )
+  private val errorHandler = (t: Throwable) =>
+    t.printStackTrace() // TODO
+    IO.raiseError(
+      t match
+        case _ =>
+          Status.INTERNAL.withDescription(t.getMessage()).withCause(t).asRuntimeException()
+      // TODO: why code 200?
+    )
 
-  override def run(args: List[String]): IO[ExitCode] =
+  override def run(args: List[String]): IO[ExitCode] = {
+    // TODO: projection
+    val serverFactory = { (xa: Transactor[IO]) => server(processor(repository(xa), registry(xa))) }
     (for
       xa <- transactor
-      repo = repository(xa)
-      _    <- Resource.eval(repo.initTables())
-      code <- Resource.eval((repository andThen processor andThen server)(xa).start)
-    yield code)
+      _  <- Resource.eval(repository(xa).initTables())
+      // _    <- Resource.eval(UserRepository(xa).initTables())
+      exit <- Resource.eval(serverFactory(xa).start)
+    yield exit)
       .use(IO(_))
+  }
 }
 
 private class GrpcCommandProcessor(registry: CommandRegistry, repository: EventRepository) {

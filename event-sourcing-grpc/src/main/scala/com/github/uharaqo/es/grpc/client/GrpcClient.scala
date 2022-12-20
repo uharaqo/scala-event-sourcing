@@ -6,7 +6,7 @@ import io.grpc.{ManagedChannel, Metadata}
 
 class CommandHandlerClient(channel: ManagedChannel) {
 
-  private val stub = CommandHandlerFs2Grpc.stubResource[IO](channel)
+  private val stub = GrpcCommandHandlerFs2Grpc.stubResource[IO](channel)
 
   def call(request: SendCommandRequest): IO[CommandReply] =
     stub.use(_.send(request, Metadata()))

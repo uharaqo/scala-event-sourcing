@@ -24,15 +24,6 @@ val baseSettings =
     scalafmtOnCompile        := true,
   )
 
-lazy val eventSourcingGrpc =
-  (project in file("event-sourcing-grpc"))
-    .settings(baseSettings)
-    .settings(
-      name := "event-sourcing-grpc",
-      libraryDependencies ++= grpcDeps
-    )
-    .enablePlugins(Fs2Grpc)
-
 lazy val exampleProto =
   (project in file("example-proto"))
     .settings(baseSettings)
@@ -53,6 +44,16 @@ lazy val eventSourcing =
       libraryDependencies ++=
         fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
     )
+
+lazy val eventSourcingGrpc =
+  (project in file("event-sourcing-grpc"))
+    .settings(baseSettings)
+    .settings(
+      name := "event-sourcing-grpc",
+      libraryDependencies ++= grpcDeps
+    )
+    .enablePlugins(Fs2Grpc)
+    .dependsOn(eventSourcing)
 
 lazy val example =
   (project in file("example"))

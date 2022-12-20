@@ -33,7 +33,7 @@ object CommandProcessor {
       responses <-
         entry
           .handler(prevState.state, command, ctx)
-          .recoverWith(t => IO.raiseError(CommandHandlerFailure(t)))
+          .handleErrorWith(t => IO.raiseError(CommandHandlerFailure(t)))
 
       success <- eventWriter(responses)
       _       <- if (!success) IO.raiseError(EventStoreConflict()) else IO.unit
