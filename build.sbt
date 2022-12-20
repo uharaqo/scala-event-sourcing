@@ -76,6 +76,8 @@ inThisBuild(
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
       Developer("uharaqo", "uharaqo", "uharaqo@users.noreply.github.com", url("https://github.com/uharaqo"))
-    )
+    ),
+    sonatypeCredentialHost := "s01.oss.sonatype.org",
+    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local",
   )
 )
