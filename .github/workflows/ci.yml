@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            java: 17
+            jobtype: 1
+          - os: ubuntu-latest
+            java: 17
+            jobtype: 2
+          - os: ubuntu-latest
+            java: 17
+            jobtype: 3
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup
+      uses: olafurpg/setup-scala@v13
+      with:
+        java-version: "adopt@1.${{ matrix.java }}"
+
+    - name: Build and test
+      run: |
+        case ${{ matrix.jobtype }} in
+          1)
+            sbt -v "mimaReportBinaryIssues; scalafmtCheckAll; +test;"
+            ;;
+          2)
+            sbt -v "scripted actions/*"
+            ;;
+          3)
+            sbt -v "dependency-management/*"
+            ;;
+          *)
+            echo unknown jobtype
+            exit 1
+        esac        
+      shell: bash
