@@ -59,17 +59,14 @@ object UserResource {
           ctx.fail(IllegalStateException("User not found"))
 
         case User(name, point) =>
-          if (point < c.point) //
-            ctx.fail(IllegalStateException("Point Shortage"))
+          if point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
           else
             val senderId = ctx.id
             for
               sent <- ctx.savePb(PointSent(c.recipientId, c.point))
               received <- ctx.withState(ctx.info, c.recipientId) { (s2, ctx2) =>
-                if (s2 == User.EMPTY)
-                  ctx2.fail(IllegalStateException("User not found"))
-                else
-                  ctx2.savePb(PointReceived(senderId, c.point))
+                if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
+                else ctx2.savePb(PointReceived(senderId, c.point))
               }
             yield sent ++ received
     }
