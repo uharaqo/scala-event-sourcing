@@ -13,12 +13,6 @@ jobs:
           - os: ubuntu-latest
             java: 17
             jobtype: 1
-          - os: ubuntu-latest
-            java: 17
-            jobtype: 2
-          - os: ubuntu-latest
-            java: 17
-            jobtype: 3
 
     runs-on: ${{ matrix.os }}
 
