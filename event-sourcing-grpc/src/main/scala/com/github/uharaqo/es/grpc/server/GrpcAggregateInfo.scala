@@ -6,7 +6,7 @@ import scalapb.descriptors.Descriptor
 import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
 class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
-  name: AggName,
+  val name: AggName,
   emptyState: S,
   commandMessageScalaDescriptor: Descriptor,
   eventHandler: EventHandler[S, E],

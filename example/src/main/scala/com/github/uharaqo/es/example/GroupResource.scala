@@ -10,20 +10,60 @@ import com.github.uharaqo.es.proto.example.UserEvent.Empty
 
 object GroupResource {
 
-  object GroupCommandHandler {
-    def apply(h: SelectiveCommandHandler[Group, GroupCommandMessage, GroupEventMessage]) = h
-  }
-
-  lazy val info =
-    GrpcAggregateInfo("group", Group.EMPTY, GroupCommandMessage.scalaDescriptor, eventHandler, commandHandler)
-
+  type GroupCommandHandler = SelectiveCommandHandler[Group, GroupCommandMessage, GroupEventMessage]
   implicit val eMapper: GroupEvent => GroupEventMessage     = PbCodec.toPbMessage(_)
   implicit val cMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage(_)
 
+  lazy val info =
+    GrpcAggregateInfo(
+      "group",
+      Group.EMPTY,
+      GroupCommandMessage.scalaDescriptor,
+      eventHandler,
+      (deps: Dependencies) => debug(commandHandler(deps))
+    )
+
   // state
   case class Group(ownerId: String, name: String, users: Set[String])
+
   object Group:
     val EMPTY = Group("", "", Set.empty)
+
+  private lazy val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(createGroup, addUser))
+
+  private val createGroup: Dependencies => GroupCommandHandler = deps => { (s, c, ctx) =>
+    c.sealedValue.createGroup.map { c =>
+      s match
+        case Group.EMPTY =>
+          ctx.withState(UserResource.info.stateInfo, c.ownerId) { (s2, ctx2) =>
+            if (s2 == UserResource.User.EMPTY)
+              ctx.fail(IllegalStateException("User not found"))
+            else
+              ctx.savePb(GroupCreated(c.ownerId, c.name))
+          }
+        case _ =>
+          ctx.fail(IllegalStateException("Already exists"))
+    }
+  }
+
+  private val addUser: Dependencies => GroupCommandHandler = deps => { (s, c, ctx) =>
+    c.sealedValue.addUser.map { c =>
+      s match
+        case Group.EMPTY =>
+          ctx.fail(IllegalStateException("Group not found"))
+
+        case Group(ownerId, name, users) =>
+          if (users.contains(c.userId))
+            ctx.fail(IllegalStateException("Already a member"))
+          else
+            ctx.withState(UserResource.info.stateInfo, c.userId) { (s, ctx2) =>
+              if (s == UserResource.User.EMPTY)
+                ctx.fail(IllegalStateException("User not found"))
+              else
+                ctx.savePb(UserAdded(c.userId))
+            }
+    }
+  }
 
   private val eventHandler: EventHandler[Group, GroupEventMessage] = { (s, e) =>
     e.toGroupEvent.asNonEmpty.get match
@@ -35,44 +75,6 @@ object GroupResource {
       case UserAdded(userId, unknownFields) =>
         s.copy(users = s.users + userId).some
   }
-
-  private val createGroup = (dep: Dependencies) =>
-    GroupCommandHandler { (s, c, ctx) =>
-      c.sealedValue.createGroup.map { c =>
-        s match
-          case Group.EMPTY =>
-            ctx.withState(UserResource.info.stateInfo, c.ownerId) { (s2, ctx2) =>
-              if (s2 == UserResource.User.EMPTY)
-                ctx.fail(IllegalStateException("User not found"))
-              else
-                ctx.savePb(GroupCreated(c.ownerId, c.name))
-            }
-          case _ =>
-            ctx.fail(IllegalStateException("Already exists"))
-      }
-    }
-
-  private val addUser = (dep: Dependencies) =>
-    GroupCommandHandler { (s, c, ctx) =>
-      c.sealedValue.addUser.map { c =>
-        s match
-          case Group.EMPTY =>
-            ctx.fail(IllegalStateException("Group not found"))
-
-          case Group(ownerId, name, users) =>
-            if (users.contains(c.userId))
-              ctx.fail(IllegalStateException("Already a member"))
-            else
-              ctx.withState(UserResource.info.stateInfo, c.userId) { (s, ctx2) =>
-                if (s == UserResource.User.EMPTY)
-                  ctx.fail(IllegalStateException("User not found"))
-                else
-                  ctx.savePb(UserAdded(c.userId))
-              }
-      }
-    }
-
-  private val commandHandler = SelectiveCommandHandler.toCommandHandler(Seq(createGroup, addUser))
 
   trait Dependencies {}
 }

@@ -20,10 +20,5 @@ case class StateInfo[S, E](
   eventDeserializer: Deserializer[E],
   eventHandler: EventHandler[S, E],
 ) {
-  override def hashCode(): Int = name.hashCode
-  override def equals(obj: Any): Boolean =
-    obj match
-      case null                 => false
-      case obj: StateInfo[_, _] => this == obj || name.equals(obj.name)
-      case _                    => false
+  override def toString(): String = name
 }

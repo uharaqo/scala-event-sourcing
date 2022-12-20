@@ -14,12 +14,12 @@ extension [S, E](info: StateInfo[S, E]) {
         case None        => VersionedState(0L, info.emptyState)
 
     events.compile
-      .fold(IO.pure(initialState)) { (prevState, e) =>
+      .fold(IO.pure(initialState)) { (prevState, ve) =>
         for
-          prev  <- prevState
-          event <- info.eventDeserializer(e.event)
-          next  <- IO.pure(info.eventHandler(prev.state, event))
-        yield next.map(VersionedState(prev.version + 1, _)).getOrElse(prev)
+          prevVerS <- prevState
+          nextE    <- info.eventDeserializer(ve.event)
+          nextS    <- IO.pure(info.eventHandler(prevVerS.state, nextE))
+        yield VersionedState(ve.version, nextS.getOrElse(prevVerS.state))
       }
       .flatten
 }
@@ -27,12 +27,13 @@ extension [S, E](info: StateInfo[S, E]) {
 object MemoisedStateProviderFactory {
   import java.util.concurrent.ConcurrentHashMap
 
-  private val m = ConcurrentHashMap[StateInfo[_, _], StateProvider[_]]()
+  // TODO: replace this with something else
+  private val m = ConcurrentHashMap[String, StateProvider[_]]()
 
   def apply(stateProviderFactory: StateProviderFactory) =
     new StateProviderFactory {
       override def create[S, E](info: StateInfo[S, E]): StateProvider[S] =
-        m.computeIfAbsent(info, _ => stateProviderFactory.create(info)).asInstanceOf[StateProvider[S]]
+        m.computeIfAbsent(info.name, _ => stateProviderFactory.create(info)).asInstanceOf[StateProvider[S]]
     }
 }
 
@@ -88,7 +89,6 @@ class CachedStateProviderFactory(
 }
 
 import scalacache.*
-
 import scala.concurrent.duration.Duration
 
 trait CacheFactory:

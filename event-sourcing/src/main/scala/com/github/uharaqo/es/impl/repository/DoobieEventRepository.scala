@@ -26,8 +26,8 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository with Pro
       .attemptSomeSqlState { case sqlstate.class23.UNIQUE_VIOLATION => false }
       // throw error on any other exceptions
       .handleErrorWith(t => IO.raiseError(EsException.EventStoreFailure(t)))
-      // Return true iff all the records were applied
-      .map(z => z.map(_ == responses.size).fold(b => false, b => b))
+      // Return true if all the records were applied or there was no response
+      .map(z => z.map(_ == responses.size).fold(b => true, b => b))
   }
   override val reader: EventReader = { (info, prevVer) =>
     SELECT_EVENTS(info, prevVer)

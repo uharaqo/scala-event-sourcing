@@ -14,44 +14,32 @@ import scalacache.caffeine.CaffeineCache
 import scalapb.GeneratedMessage
 
 import java.time.Instant
-import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.*
+import com.github.uharaqo.es.proto.example.UserCommand
+import com.github.uharaqo.es.proto.eventsourcing.SendCommandRequest
+import com.github.uharaqo.es.proto.example.*
+import scalapb.GeneratedMessage
+import java.util.concurrent.ConcurrentHashMap
+import com.github.uharaqo.es.proto.example.UserEvent.Empty
+import java.nio.charset.StandardCharsets
+import com.google.protobuf.ByteString
 
 class EventSourcingSuite extends CatsEffectSuite {
+  import EventSourcingSuite.*
 
   private val user1 = "user1"
   private val user2 = "user2"
 
   test("user aggregate") {
     val test1 = { (xa: Transactor[IO]) =>
+      val setup  = UserResourceSetup(xa)
+      val tester = setup.tester
       import UserResource.*
-
-      val eventRepo = DoobieEventRepository(xa)
-      val stateProviderFactory =
-        debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-      val dep  = new Dependencies {}
-      val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
-
-      val projection =
-        ScheduledProjection(
-          ProjectionProcessor(
-            info.eventCodec.deserializer,
-            r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
-            2,
-            1 seconds
-          ),
-          ProjectionEvent("", 0L, 0, null),
-          prev => EventQuery(info.stateInfo.name, prev.timestamp),
-          eventRepo,
-          100 millis,
-          100 millis,
-        )
-
-      val tester = info.newTester(proc, stateProviderFactory)
       import tester.*
 
       for {
-        _ <- projection.start
+        _ <- setup.projection.start
         _ <- Resource.eval(IO.sleep(1 seconds))
         _ <- Resource.eval(for {
           _ <- sendPb(user1, RegisterUser("Alice"))
@@ -100,39 +88,31 @@ class EventSourcingSuite extends CatsEffectSuite {
     }
 
     val test2 = { (xa: Transactor[IO]) =>
+      val group1 = "g1"
+      val name1  = "name1"
+
+      val setup  = GroupResourceSetup(xa)
+      val tester = setup.tester
       import GroupResource.*
-
-      val eventRepo = DoobieEventRepository(xa)
-      val stateProviderFactory =
-        debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-      val dep  = new Dependencies {}
-      val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
-
-      val tester = info.newTester(proc, stateProviderFactory)
       import tester.*
 
-      val id1   = "g1"
-      val name1 = "name1"
-
-      implicit val eMapper = (es: GroupEvent) => es.asMessage
-      implicit val cMapper = (cs: GroupCommand) => cs.asMessage
       Resource.eval(
         for
-          _ <- sendPb(id1, CreateGroup("INVALID_USER", name1))
+          _ <- sendPb(group1, CreateGroup("INVALID_USER", name1))
             .failsBecause("User not found")
 
-          _ <- sendPb(id1, CreateGroup(user1, name1))
+          _ <- sendPb(group1, CreateGroup(user1, name1))
             .eventsPb(GroupCreated(user1, name1))
-            .states((id1, Group(user1, name1, Set(user1))))
+            .states((group1, Group(user1, name1, Set(user1))))
 
-          _ <- sendPb(id1, CreateGroup(user1, name1))
+          _ <- sendPb(group1, CreateGroup(user1, name1))
             .failsBecause("Already exists")
 
-          _ <- sendPb(id1, AddUser(user2))
+          _ <- sendPb(group1, AddUser(user2))
             .eventsPb(UserAdded(user2))
-            .states((id1, Group(user1, name1, Set(user1, user2))))
+            .states((group1, Group(user1, name1, Set(user1, user2))))
 
-          _ <- sendPb(id1, AddUser("INVALID_USER"))
+          _ <- sendPb(group1, AddUser("INVALID_USER"))
             .failsBecause("User not found")
         yield ()
       )
@@ -158,4 +138,43 @@ object EventSourcingSuite {
       _ <- task(xa)
     yield ())
       .use(_ => IO(ExitCode.Success))
+}
+
+class UserResourceSetup(xa: Transactor[IO]) {
+  import UserResource.*
+
+  val eventRepo = DoobieEventRepository(xa)
+  val stateProviderFactory =
+    debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
+  val dep  = new Dependencies {}
+  val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
+
+  val projection =
+    ScheduledProjection(
+      ProjectionProcessor(
+        info.eventCodec.deserializer,
+        r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
+        2,
+        1 seconds
+      ),
+      ProjectionEvent("", 0L, 0, null),
+      prev => EventQuery(info.stateInfo.name, prev.timestamp),
+      eventRepo,
+      100 millis,
+      100 millis,
+    )
+
+  val tester = info.newTester(proc, stateProviderFactory)
+}
+
+class GroupResourceSetup(xa: Transactor[IO]) {
+  import GroupResource.*
+
+  val eventRepo = DoobieEventRepository(xa)
+  val stateProviderFactory =
+    debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
+  val dep  = new Dependencies {}
+  val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
+
+  val tester = info.newTester(proc, stateProviderFactory)
 }
