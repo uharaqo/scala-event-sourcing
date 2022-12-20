@@ -29,19 +29,13 @@ jobs:
     - name: Setup
       uses: olafurpg/setup-scala@v13
       with:
-        java-version: "adopt@1.${{ matrix.java }}"
+        java-version: "openjdk@1.${{ matrix.java }}.0"
 
     - name: Build and test
       run: |
         case ${{ matrix.jobtype }} in
           1)
-            sbt -v "mimaReportBinaryIssues; scalafmtCheckAll; +test;"
-            ;;
-          2)
-            sbt -v "scripted actions/*"
-            ;;
-          3)
-            sbt -v "dependency-management/*"
+            sbt -v "scalafmtCheckAll; +test;"
             ;;
           *)
             echo unknown jobtype
