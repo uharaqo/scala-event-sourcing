@@ -14,7 +14,7 @@ class DefaultCommandHandlerContext[S, E](
   override def save(events: E*): IO[EventRecords] =
     events.zipWithIndex.traverse {
       case (e, i) =>
-        info.eventSerializer(e).map { e =>
+        info.eventCodec.serializer(e).map { e =>
           EventRecord(info.name, id, prevVer + i + 1, System.currentTimeMillis(), e)
         }
     }

@@ -17,7 +17,7 @@ extension [S, E](info: StateInfo[S, E]) {
       .fold(IO.pure(initialState)) { (prevState, ve) =>
         for
           prevVerS <- prevState
-          nextE    <- info.eventDeserializer(ve.event)
+          nextE    <- info.eventCodec.deserializer(ve.event)
           nextS    <- IO.pure(info.eventHandler(prevVerS.state, nextE))
         yield VersionedState(ve.version, nextS.getOrElse(prevVerS.state))
       }

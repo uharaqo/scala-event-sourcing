@@ -15,7 +15,7 @@ class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
 
   val eventCodec   = PbCodec[E]
   val commandCodec = PbCodec[C]
-  val stateInfo    = StateInfo(name, emptyState, eventCodec.serializer, eventCodec.deserializer, eventHandler)
+  val stateInfo    = StateInfo(name, emptyState, eventCodec, eventHandler)
 
   val commandDeserializer = Map(commandMessageScalaDescriptor.fullName -> commandCodec.deserializer)
   val commandRegistry     = (dep: D) => CommandRegistry(stateInfo, commandDeserializer, commandHandler(dep))

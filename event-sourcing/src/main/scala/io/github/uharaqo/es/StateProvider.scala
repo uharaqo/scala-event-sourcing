@@ -16,8 +16,7 @@ trait StateProviderFactory {
 case class StateInfo[S, E](
   name: AggName,
   emptyState: S,
-  eventSerializer: Serializer[E],
-  eventDeserializer: Deserializer[E],
+  eventCodec: Codec[E],
   eventHandler: EventHandler[S, E],
 ) {
   override def toString(): String = name

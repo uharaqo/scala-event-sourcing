@@ -44,7 +44,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
       validateEvents(events.map(mapper))
 
     private def validateEvents(events: Seq[E]) = io >>= { v =>
-      for es <- v.traverse(r => info.eventDeserializer(r.event)) yield {
+      for es <- v.traverse(r => info.eventCodec.deserializer(r.event)) yield {
         assertEquals(es, events)
         v
       }
