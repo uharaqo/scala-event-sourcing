@@ -22,11 +22,10 @@ object ProjectionProcessor {
     retryInterval: FiniteDuration,
   ): ProjectionProcessor[T] = { (event, prev) =>
 
-    val deserialize = { (event: EventRecord) =>
+    val deserialize = (event: EventRecord) =>
       deserializer(event.event)
         .map(e => ProjectionEvent(event.id, event.version, event.timestamp, e))
         .handleErrorWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t.some)))
-    }
 
     lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[T] = { (event, retryInterval, remainingRetry) =>
       projection(event) >>= {

@@ -81,8 +81,8 @@ private class GrpcCommandProcessor(registry: CommandRegistry, repository: EventR
     )
   private val processor = CommandProcessor(registry, stateProvider, repository.writer)
 
-  def command(request: CommandInput): IO[CommandOutput] =
-    processor(request)
+  def command(input: CommandInput): IO[CommandOutput] =
+    processor(input)
       .map(records => records.lastOption.getOrElse(throw Status.UNKNOWN.asRuntimeException()))
       .map(r => CommandOutput(r.version, "TODO"))
 }

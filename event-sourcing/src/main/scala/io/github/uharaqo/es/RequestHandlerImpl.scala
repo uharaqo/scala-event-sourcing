@@ -9,7 +9,7 @@ object CommandRegistry {
     deserializers: Map[Fqcn, Deserializer[C]],
     handler: CommandHandler[S, C, E],
   ): CommandRegistry =
-    deserializers.map { case (k, v) => (k, CommandRegistryEntry(stateInfo, k, v, handler)) }
+    deserializers.map { case (k, v) => (k, CommandInfo(stateInfo, k, v, handler)) }
 }
 
 object CommandProcessor {
@@ -17,29 +17,29 @@ object CommandProcessor {
     commandRegistry: CommandRegistry,
     stateProviderFactory: StateProviderFactory,
     eventWriter: EventWriter,
-  ): CommandProcessor = { request =>
-    val id          = request.info.id
-    val commandName = request.name
-    val rawCommand  = request.payload
+  ): CommandProcessor = { input =>
+    val id          = input.info.id
+    val commandName = input.name
+    val rawCommand  = input.payload
 
     for
-      entry   <- IO.fromOption(commandRegistry.get(commandName))(InvalidCommand(commandName))
-      command <- entry.deserializer(rawCommand)
+      commandInfo <- IO.fromOption(commandRegistry.get(commandName))(InvalidCommand(commandName))
+      command     <- commandInfo.deserializer(rawCommand)
 
-      stateProvider = stateProviderFactory.create(entry.stateInfo)
+      stateProvider = stateProviderFactory.create(commandInfo.stateInfo)
       prevState <- stateProvider.load(id)
 
-      ctx = new DefaultCommandHandlerContext(entry.stateInfo, id, prevState.version, stateProviderFactory)
-      responses <-
-        entry
+      ctx = new DefaultCommandHandlerContext(commandInfo.stateInfo, id, prevState.version, stateProviderFactory)
+      records <-
+        commandInfo
           .handler(prevState.state, command, ctx)
           .handleErrorWith(t => IO.raiseError(CommandHandlerFailure(t)))
 
-      success <- eventWriter(responses)
+      success <- eventWriter(records)
       _       <- if !success then IO.raiseError(EventStoreConflict()) else IO.unit
 
-      _ <- stateProvider.afterWrite(id, prevState, responses)
-    yield responses
+      _ <- stateProvider.afterWrite(id, prevState, records)
+    yield records
   }
   // .handleErrorWith { case t: EventStoreConflict => if (retryOnConflict) handle else IO.raiseError(t) }
 }

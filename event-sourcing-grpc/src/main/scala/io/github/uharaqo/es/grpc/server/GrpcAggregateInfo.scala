@@ -10,7 +10,7 @@ class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
   emptyState: S,
   commandMessageScalaDescriptor: Descriptor,
   eventHandler: EventHandler[S, E],
-  commandHandler: D => CommandHandler[S, C, E],
+  commandHandlerFactory: D => CommandHandler[S, C, E],
 )(using eCmp: GeneratedMessageCompanion[E], cCmp: GeneratedMessageCompanion[C]) {
 
   val eventCodec   = PbCodec[E]
@@ -18,7 +18,7 @@ class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
   val stateInfo    = StateInfo(name, emptyState, eventCodec, eventHandler)
 
   val commandDeserializer = Map(commandMessageScalaDescriptor.fullName -> commandCodec.deserializer)
-  val commandRegistry     = (dep: D) => CommandRegistry(stateInfo, commandDeserializer, commandHandler(dep))
+  val commandRegistry     = (dep: D) => CommandRegistry(stateInfo, commandDeserializer, commandHandlerFactory(dep))
 }
 
 import cats.effect.IO

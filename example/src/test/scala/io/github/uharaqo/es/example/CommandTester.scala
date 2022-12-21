@@ -31,9 +31,9 @@ class CommandTester[S, C <: GeneratedMessage, E](
   def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[EventRecords] =
     send(aggId, mapper(command))
 
-  def send(request: CommandInput): IO[EventRecords] = {
+  def send(input: CommandInput): IO[EventRecords] = {
     import unsafe.implicits.*
-    dispatcher(request)
+    dispatcher(input)
   }
 
   extension (io: IO[EventRecords]) {
