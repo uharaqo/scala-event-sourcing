@@ -13,7 +13,7 @@ val options = Seq(
 
 val baseSettings =
   Seq(
-    organization := "com.github.uharaqo",
+    organization := "io.github.uharaqo",
     homepage     := Some(url("https://github.com/uharaqo/scala-event-sourcing")),
     licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
     developers := List(
