@@ -41,5 +41,5 @@ object CommandProcessor {
       _ <- stateProvider.afterWrite(id, prevState, responses)
     yield responses
   }
-  // .recoverWith { case t: EventStoreConflict => if (retryOnConflict) handle else IO.raiseError(t) }
+  // .handleErrorWith { case t: EventStoreConflict => if (retryOnConflict) handle else IO.raiseError(t) }
 }

@@ -19,11 +19,3 @@ object EsException:
   case class CommandHandlerFailure(t: Throwable) extends EsException(s"Command handler failure", t.some)
 
   case object UnexpectedException extends EsException(s"Unexpected Exception", none)
-
-sealed class ProjectionException protected (message: String, cause: Throwable) extends Exception(message, cause)
-
-object ProjectionException:
-  case class UnrecoverableException(message: String, cause: Throwable) extends ProjectionException(message, cause):
-    def this(message: String) = this(message, null: Throwable)
-  case class TemporaryException(message: String, cause: Throwable) extends ProjectionException(message, cause):
-    def this(message: String) = this(message, null: Throwable)
