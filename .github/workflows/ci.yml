@@ -15,6 +15,9 @@ jobs:
             jobtype: 1
 
     runs-on: ${{ matrix.os }}
+    env:
+      JAVA_OPTS: -Xms2048M -Xmx2048M -Xss6M -XX:ReservedCodeCacheSize=256M -Dfile.encoding=UTF-8
+      JVM_OPTS:  -Xms2048M -Xmx2048M -Xss6M -XX:ReservedCodeCacheSize=256M -Dfile.encoding=UTF-8
 
     steps:
     - name: Checkout
@@ -24,6 +27,8 @@ jobs:
       uses: olafurpg/setup-scala@v13
       with:
         java-version: "openjdk@1.${{ matrix.java }}.0"
+
+    - uses: coursier/cache-action@v6
 
     - name: Build and test
       run: |

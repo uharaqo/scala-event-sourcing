@@ -36,7 +36,7 @@ object CommandProcessor {
           .handleErrorWith(t => IO.raiseError(CommandHandlerFailure(t)))
 
       success <- eventWriter(responses)
-      _       <- if (!success) IO.raiseError(EventStoreConflict()) else IO.unit
+      _       <- if !success then IO.raiseError(EventStoreConflict()) else IO.unit
 
       _ <- stateProvider.afterWrite(id, prevState, responses)
     yield responses

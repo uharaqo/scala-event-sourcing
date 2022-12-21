@@ -28,7 +28,7 @@ object MemoisedStateProviderFactory {
   import java.util.concurrent.ConcurrentHashMap
 
   // TODO: replace this with something else
-  private val m = ConcurrentHashMap[String, StateProvider[_]]()
+  private val m = ConcurrentHashMap[String, StateProvider[?]]()
 
   def apply(stateProviderFactory: StateProviderFactory) =
     new StateProviderFactory {
@@ -83,7 +83,7 @@ class CachedStateProviderFactory(
         yield v
 
       override def afterWrite(id: AggId, prevState: VersionedState[S], responses: Seq[EventRecord]): IO[Unit] =
-        info.nextState(Some(prevState), Stream(responses.map(r => VersionedEvent(r.version, r.event)): _*))
+        info.nextState(Some(prevState), Stream(responses.map(r => VersionedEvent(r.version, r.event))*))
           >>= { stateCache.set(id, _) }
   }
 }
