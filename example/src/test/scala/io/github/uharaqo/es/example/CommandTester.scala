@@ -21,7 +21,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
     import cats.effect.unsafe.implicits.global
     val p = com.google.protobuf.any.Any.pack(command)
     send(
-      CommandRequest(
+      CommandInput(
         info = AggInfo(info.name, aggId),
         name = p.typeUrl.split('/').last,
         payload = p.value.toByteArray(),
@@ -31,7 +31,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
   def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[EventRecords] =
     send(aggId, mapper(command))
 
-  def send(request: CommandRequest): IO[EventRecords] = {
+  def send(request: CommandInput): IO[EventRecords] = {
     import unsafe.implicits.*
     dispatcher(request)
   }

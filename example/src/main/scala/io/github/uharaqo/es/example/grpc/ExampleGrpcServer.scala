@@ -22,10 +22,10 @@ object Server extends IOApp {
       ++ registryFactory(GroupResource.info, groupDeps(xa))).toMap
   private val repository = (xa: Transactor[IO]) => DoobieEventRepository(xa)
   private val processor  = (repo: EventRepository, registry: CommandRegistry) => GrpcCommandProcessor(registry, repo)
-  private val parser: SendCommandRequest => IO[CommandRequest] = { req =>
+  private val parser: SendCommandRequest => IO[CommandInput] = { req =>
     IO {
       val p = req.payload.get
-      CommandRequest(AggInfo(req.aggregate, req.id), p.typeUrl.split('/').last, p.value.toByteArray)
+      CommandInput(AggInfo(req.aggregate, req.id), p.typeUrl.split('/').last, p.value.toByteArray)
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))
   }
@@ -81,10 +81,10 @@ private class GrpcCommandProcessor(registry: CommandRegistry, repository: EventR
     )
   private val processor = CommandProcessor(registry, stateProvider, repository.writer)
 
-  def command(request: CommandRequest): IO[CommandResult] =
+  def command(request: CommandInput): IO[CommandOutput] =
     processor(request)
       .map(records => records.lastOption.getOrElse(throw Status.UNKNOWN.asRuntimeException()))
-      .map(r => CommandResult(r.version, "TODO"))
+      .map(r => CommandOutput(r.version, "TODO"))
 }
 
 private def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
