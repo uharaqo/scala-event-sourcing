@@ -36,12 +36,11 @@ object ProjectionProcessor {
         case Left(err) =>
           err match
             case _: TemporaryException =>
-              if (remainingRetry > 0)
+              if remainingRetry > 0 then
                 Logger[IO].warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
                   >> IO.sleep(retryInterval)
                   >> handle(event, retryInterval * 2, remainingRetry - 1)
-              else
-                IO.raiseError(UnrecoverableException("Projection retry failure", err))
+              else IO.raiseError(UnrecoverableException("Projection retry failure", err))
             case _: UnrecoverableException =>
               IO.raiseError(err)
             case _: Throwable =>
@@ -108,7 +107,7 @@ object ScheduledProjection {
         _ <- awaitAndRun(t, task, pollingInterval, initialState).background
       yield ()
 
-    private def awaitAndRun[T](t: Ticker, task: T => IO[T], pollingInterval: FiniteDuration, prevState: T): IO[_] =
+    private def awaitAndRun[T](t: Ticker, task: T => IO[T], pollingInterval: FiniteDuration, prevState: T): IO[?] =
       t()
         >>= {
           case Some(_) => task(prevState)

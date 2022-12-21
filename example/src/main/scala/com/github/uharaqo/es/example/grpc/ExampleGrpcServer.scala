@@ -15,7 +15,7 @@ object Server extends IOApp {
   private val groupDeps = (xa: Transactor[IO]) => new GroupResource.Dependencies {}
 
   private val transactor = H2TransactorFactory.create()
-  private def registryFactory[D] = (info: GrpcAggregateInfo[_, _, _, D], dep: D) =>
+  private def registryFactory[D] = (info: GrpcAggregateInfo[?, ?, ?, D], dep: D) =>
     info.commandRegistry(dep).view.mapValues(a => a.copy(handler = debug(a.handler)))
   private val registry = (xa: Transactor[IO]) =>
     (registryFactory(UserResource.info, userDeps(xa))

@@ -6,7 +6,7 @@ import cats.effect.IO
 type CommandProcessor = CommandRequest => IO[Seq[EventRecord]]
 
 /** Provide a processor for a given command FQCN */
-type CommandRegistry = Map[Fqcn, CommandRegistryEntry[_, _, _]]
+type CommandRegistry = Map[Fqcn, CommandRegistryEntry[?, ?, ?]]
 
 case class CommandRegistryEntry[S, C, E](
   stateInfo: StateInfo[S, E],

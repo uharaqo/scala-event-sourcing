@@ -1,13 +1,11 @@
-import Dependencies._
-
-scalaVersion := "3.2.1"
-organization := "com.github.uharaqo"
-name         := "scala-event-sourcing"
+import Dependencies.*
 
 val options = Seq(
   "-feature",
   "-deprecation",
   "-unchecked",
+  "-encoding",
+  "UTF-8",
   "-language:postfixOps",
   "-language:higherKinds",
   // "-Yexplicit-nulls",
@@ -15,26 +13,23 @@ val options = Seq(
 
 val baseSettings =
   Seq(
-    version := "0.1.0-SNAPSHOT",
+    organization := "com.github.uharaqo",
+    homepage     := Some(url("https://github.com/uharaqo/scala-event-sourcing")),
+    licenses     := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
+    developers := List(
+      Developer("uharaqo", "uharaqo", "uharaqo@users.noreply.github.com", url("https://github.com/uharaqo"))
+    ),
+    version           := "0.0.10-SNAPSHOT",
+    scalaVersion      := "3.2.1",
+    scalacOptions     := options,
+    scalafmtOnCompile := true,
     libraryDependencies ++= commonDeps ++ testDeps,
-    scalaVersion             := "3.2.1",
-    scalacOptions            := options,
-    Test / parallelExecution := true,
     run / fork               := true,
-    scalafmtOnCompile        := true,
+    Test / publishArtifact   := false,
+    Test / parallelExecution := false,
+    sonatypeCredentialHost   := "s01.oss.sonatype.org",
+    sonatypeRepository       := "https://s01.oss.sonatype.org/service/local",
   )
-
-lazy val exampleProto =
-  (project in file("example-proto"))
-    .settings(baseSettings)
-    .settings(
-      name := "example-proto",
-      Compile / PB.targets :=
-        Seq(
-          scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"
-        ),
-      libraryDependencies ++= protoDeps
-    )
 
 lazy val eventSourcing =
   (project in file("event-sourcing"))
@@ -55,16 +50,31 @@ lazy val eventSourcingGrpc =
     .enablePlugins(Fs2Grpc)
     .dependsOn(eventSourcing)
 
+lazy val exampleProto =
+  (project in file("example-proto"))
+    .settings(baseSettings)
+    .settings(
+      name := "example-proto",
+      Compile / PB.targets :=
+        Seq(
+          scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"
+        ),
+      libraryDependencies ++= protoDeps,
+      publish / skip := true,
+    )
+
 lazy val example =
   (project in file("example"))
     .settings(baseSettings)
     .settings(
       name := "example",
       libraryDependencies ++=
-        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
+        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps,
+      publish / skip := true,
     )
     .dependsOn(eventSourcing, eventSourcingGrpc, exampleProto)
 
 val root =
   (project in file("."))
+    .settings(publish / skip := true)
     .aggregate(eventSourcingGrpc, eventSourcing, example)

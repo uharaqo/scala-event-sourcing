@@ -25,5 +25,5 @@ import cats.effect.IO
 
 extension [S, C, E, ES](ctx: CommandHandlerContext[S, E]) {
   def savePb(events: ES*)(using mapper: ES => E): IO[Seq[EventRecord]] =
-    ctx.save(events.map(mapper): _*)
+    ctx.save(events.map(mapper)*)
 }
