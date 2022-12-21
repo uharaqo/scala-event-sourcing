@@ -42,40 +42,40 @@ class EventSourcingSuite extends CatsEffectSuite {
         _ <- setup.projection.start
         _ <- Resource.eval(IO.sleep(1 seconds))
         _ <- Resource.eval(for {
-          _ <- sendPb(user1, RegisterUser("Alice"))
-            .eventsPb(UserRegistered("Alice"))
+          _ <- send(user1, RegisterUser("Alice"))
+            .events(UserRegistered("Alice"))
             .states((user1, User("Alice", 0)))
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, RegisterUser("Alice"))
+          _ <- send(user1, RegisterUser("Alice"))
             .failsBecause("Already registered")
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, AddPoint(30))
-            .eventsPb(PointAdded(30))
+          _ <- send(user1, AddPoint(30))
+            .events(PointAdded(30))
             .states((user1, User("Alice", 30)))
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, AddPoint(80))
-            .eventsPb(PointAdded(80))
+          _ <- send(user1, AddPoint(80))
+            .events(PointAdded(80))
             .states((user1, User("Alice", 110)))
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user2, RegisterUser("Bob"))
-            .eventsPb(UserRegistered("Bob"))
+          _ <- send(user2, RegisterUser("Bob"))
+            .events(UserRegistered("Bob"))
             .states((user2, User("Bob", 0)))
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, SendPoint(user2, 9999))
+          _ <- send(user1, SendPoint(user2, 9999))
             .failsBecause("Point Shortage")
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, SendPoint("INVALID_USER", 10))
+          _ <- send(user1, SendPoint("INVALID_USER", 10))
             .failsBecause("User not found")
           _ <- IO.sleep(100 millis)
 
-          _ <- sendPb(user1, SendPoint(user2, 10))
-            .eventsPb(
+          _ <- send(user1, SendPoint(user2, 10))
+            .events(
               PointSent(user2, 10),
               PointReceived(user1, 10),
             )
@@ -98,21 +98,21 @@ class EventSourcingSuite extends CatsEffectSuite {
 
       Resource.eval(
         for
-          _ <- sendPb(group1, CreateGroup("INVALID_USER", name1))
+          _ <- send(group1, CreateGroup("INVALID_USER", name1))
             .failsBecause("User not found")
 
-          _ <- sendPb(group1, CreateGroup(user1, name1))
-            .eventsPb(GroupCreated(user1, name1))
+          _ <- send(group1, CreateGroup(user1, name1))
+            .events(GroupCreated(user1, name1))
             .states((group1, Group(user1, name1, Set(user1))))
 
-          _ <- sendPb(group1, CreateGroup(user1, name1))
+          _ <- send(group1, CreateGroup(user1, name1))
             .failsBecause("Already exists")
 
-          _ <- sendPb(group1, AddUser(user2))
-            .eventsPb(UserAdded(user2))
+          _ <- send(group1, AddUser(user2))
+            .events(UserAdded(user2))
             .states((group1, Group(user1, name1, Set(user1, user2))))
 
-          _ <- sendPb(group1, AddUser("INVALID_USER"))
+          _ <- send(group1, AddUser("INVALID_USER"))
             .failsBecause("User not found")
         yield ()
       )

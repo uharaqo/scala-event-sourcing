@@ -4,7 +4,7 @@ import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
-import io.github.uharaqo.es.grpc.server.{savePb, GrpcAggregateInfo}
+import io.github.uharaqo.es.grpc.server.{save, GrpcAggregateInfo}
 import io.github.uharaqo.es.proto.example.*
 import io.github.uharaqo.es.proto.example.UserEvent.Empty
 
@@ -37,7 +37,7 @@ object GroupResource {
         case Group.EMPTY =>
           ctx.withState(UserResource.info.stateInfo, c.ownerId) { (s2, ctx2) =>
             if s2 == UserResource.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-            else ctx.savePb(GroupCreated(c.ownerId, c.name))
+            else ctx.save(GroupCreated(c.ownerId, c.name))
           }
         case _ =>
           ctx.fail(IllegalStateException("Already exists"))
@@ -55,7 +55,7 @@ object GroupResource {
           else
             ctx.withState(UserResource.info.stateInfo, c.userId) { (s, ctx2) =>
               if s == UserResource.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-              else ctx.savePb(UserAdded(c.userId))
+              else ctx.save(UserAdded(c.userId))
             }
     }
   }

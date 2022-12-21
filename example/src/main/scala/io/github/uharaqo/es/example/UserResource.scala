@@ -4,7 +4,7 @@ import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
-import io.github.uharaqo.es.grpc.server.{savePb, GrpcAggregateInfo}
+import io.github.uharaqo.es.grpc.server.{save, GrpcAggregateInfo}
 import io.github.uharaqo.es.proto.example.*
 
 object UserResource {
@@ -34,7 +34,7 @@ object UserResource {
     c.sealedValue.registerUser.map { c =>
       s match
         case User.EMPTY =>
-          ctx.savePb(UserRegistered(c.name))
+          ctx.save(UserRegistered(c.name))
 
         case User(name, point) =>
           ctx.fail(IllegalStateException("Already registered"))
@@ -48,7 +48,7 @@ object UserResource {
           ctx.fail(IllegalStateException("User not found"))
 
         case User(name, point) =>
-          ctx.savePb(PointAdded(c.point))
+          ctx.save(PointAdded(c.point))
     }
   }
 
@@ -63,10 +63,10 @@ object UserResource {
           else
             val senderId = ctx.id
             for
-              sent <- ctx.savePb(PointSent(c.recipientId, c.point))
+              sent <- ctx.save(PointSent(c.recipientId, c.point))
               received <- ctx.withState(ctx.info, c.recipientId) { (s2, ctx2) =>
                 if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
-                else ctx2.savePb(PointReceived(senderId, c.point))
+                else ctx2.save(PointReceived(senderId, c.point))
               }
             yield sent ++ received
     }

@@ -28,7 +28,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
       )
     )
 
-  def sendPb[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[Seq[EventRecord]] =
+  def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[Seq[EventRecord]] =
     send(aggId, mapper(command))
 
   def send(request: CommandRequest): IO[Seq[EventRecord]] = {
@@ -40,7 +40,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
     def events(events: E*): IO[Seq[EventRecord]] =
       validateEvents(events)
 
-    def eventsPb[ES](events: ES*)(implicit mapper: ES => E): IO[Seq[EventRecord]] =
+    def events[ES](events: ES*)(implicit mapper: ES => E): IO[Seq[EventRecord]] =
       validateEvents(events.map(mapper))
 
     private def validateEvents(events: Seq[E]) = io >>= { v =>
