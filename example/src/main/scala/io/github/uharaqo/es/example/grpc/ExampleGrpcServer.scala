@@ -33,14 +33,14 @@ object Server extends IOApp {
     (processor: GrpcCommandProcessor) =>
       GrpcServer(
         new GrpcCommandHandlerFs2Grpc[IO, Metadata] {
-          override def send(request: SendCommandRequest, ctx: Metadata): IO[CommandReply] =
+          override def sendCommand(request: SendCommandRequest, ctx: Metadata): IO[SendCommandResponse] =
             (for
               parsed <- parser(request)
               result <- processor.command(parsed)
-            yield CommandReply(result.version, result.message))
+            yield SendCommandResponse(result.version, result.message))
               .handleErrorWith(errorHandler)
 
-          override def load(request: LoadStateRequest, ctx: Metadata): IO[StateReply] = ???
+          override def loadState(request: LoadStateRequest, ctx: Metadata): IO[LoadStateResponse] = ???
         }
       )
   private val errorHandler = (t: Throwable) =>

@@ -5,8 +5,8 @@ import "google/protobuf/any.proto";
 import "google/protobuf/wrappers.proto";
 
 service GrpcCommandHandler {
-  rpc Send (SendCommandRequest) returns (CommandReply) {}
-  rpc Load (LoadStateRequest) returns (StateReply) {}
+  rpc SendCommand (SendCommandRequest) returns (SendCommandResponse) {}
+  rpc LoadState (LoadStateRequest) returns (LoadStateResponse) {}
 }
 
 message SendCommandRequest {
@@ -18,7 +18,7 @@ message SendCommandRequest {
   google.protobuf.Any payload = 3;
 }
 
-message CommandReply {
+message SendCommandResponse {
   int64 version = 1;
   string message = 2;
 }
@@ -32,6 +32,6 @@ message LoadStateRequest {
   google.protobuf.Int64Value min_version = 3;
 }
 
-message StateReply {
+message LoadStateResponse {
   google.protobuf.Any result = 1;
 }
