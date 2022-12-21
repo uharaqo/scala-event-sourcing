@@ -29,12 +29,27 @@ class DefaultCommandHandlerContext[S, E](
     yield ress
 }
 
-type SelectiveCommandHandler[S, C, E] = (s: S, c: C, ctx: CommandHandlerContext[S, E]) => Option[IO[EventRecords]]
+type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]
 
-object SelectiveCommandHandler {
+object PartialCommandHandler {
   def toCommandHandler[S, C, E, D](
-    handlers: Seq[D => SelectiveCommandHandler[S, C, E]]
+    handlers: Seq[D => PartialCommandHandler[S, C, E]]
   ): D => CommandHandler[S, C, E] = { dep => (s, c, ctx) =>
-    handlers.map(_(dep)).map(_(s, c, ctx)).find(_.isDefined).flatten.getOrElse(IO.pure(Seq.empty))
+    val f: PartialFunction[C, IO[EventRecords]] =
+      handlers
+        .map(_(dep))
+        .map(_(s, ctx))
+        .foldLeft(PartialFunction.empty)((pf1, pf2) => if pf2.isDefinedAt(c) then pf1.orElse(pf2) else pf1)
+
+    if f.isDefinedAt(c) then f(c) else IO.raiseError(EsException.InvalidCommand(ctx.info.name))
+  }
+
+  def toCommandHandler[S, C, E, D, C2](
+    handlers: Seq[D => PartialCommandHandler[S, C2, E]],
+    mapper: C => C2
+  ): D => CommandHandler[S, C, E] = { dep => (s, c, ctx) =>
+    val c2 = mapper(c)
+    val f  = toCommandHandler[S, C2, E, D](handlers)(dep)
+    f(s, c2, ctx)
   }
 }
