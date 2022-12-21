@@ -82,7 +82,7 @@ class CachedStateProviderFactory(
           _ <- stateCache.set(id, v)
         yield v
 
-      override def afterWrite(id: AggId, prevState: VersionedState[S], responses: Seq[EventRecord]): IO[Unit] =
+      override def afterWrite(id: AggId, prevState: VersionedState[S], responses: EventRecords): IO[Unit] =
         info.nextState(Some(prevState), Stream(responses.map(r => VersionedEvent(r.version, r.event))*))
           >>= { stateCache.set(id, _) }
   }

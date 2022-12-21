@@ -17,7 +17,7 @@ class CommandTester[S, C <: GeneratedMessage, E](
 ) {
   private val stateProvider = stateProviderFactory.create(info)
 
-  def send(aggId: AggId, command: C): IO[Seq[EventRecord]] =
+  def send(aggId: AggId, command: C): IO[EventRecords] =
     import cats.effect.unsafe.implicits.global
     val p = com.google.protobuf.any.Any.pack(command)
     send(
@@ -28,19 +28,19 @@ class CommandTester[S, C <: GeneratedMessage, E](
       )
     )
 
-  def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[Seq[EventRecord]] =
+  def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[EventRecords] =
     send(aggId, mapper(command))
 
-  def send(request: CommandRequest): IO[Seq[EventRecord]] = {
+  def send(request: CommandRequest): IO[EventRecords] = {
     import unsafe.implicits.*
     dispatcher(request)
   }
 
-  extension (io: IO[Seq[EventRecord]]) {
-    def events(events: E*): IO[Seq[EventRecord]] =
+  extension (io: IO[EventRecords]) {
+    def events(events: E*): IO[EventRecords] =
       validateEvents(events)
 
-    def events[ES](events: ES*)(implicit mapper: ES => E): IO[Seq[EventRecord]] =
+    def events[ES](events: ES*)(implicit mapper: ES => E): IO[EventRecords] =
       validateEvents(events.map(mapper))
 
     private def validateEvents(events: Seq[E]) = io >>= { v =>

@@ -24,6 +24,6 @@ class GrpcAggregateInfo[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
 import cats.effect.IO
 
 extension [S, E](ctx: CommandHandlerContext[S, E]) {
-  def save[ES](events: ES*)(using mapper: ES => E): IO[Seq[EventRecord]] =
+  def save[ES](events: ES*)(using mapper: ES => E): IO[EventRecords] =
     ctx.save(events.map(mapper)*)
 }

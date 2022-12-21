@@ -5,7 +5,7 @@ import cats.effect.IO
 trait StateProvider[S] {
   def load(id: AggId): IO[VersionedState[S]] = load(id, None)
   def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]]
-  def afterWrite(id: AggId, prevState: VersionedState[S], responses: Seq[EventRecord]): IO[Unit] = IO.unit
+  def afterWrite(id: AggId, prevState: VersionedState[S], responses: EventRecords): IO[Unit] = IO.unit
 }
 
 trait StateProviderFactory {

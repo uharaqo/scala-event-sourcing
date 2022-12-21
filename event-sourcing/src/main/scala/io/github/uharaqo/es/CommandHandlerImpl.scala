@@ -11,7 +11,7 @@ class DefaultCommandHandlerContext[S, E](
 
   import cats.implicits.*
 
-  override def save(events: E*): IO[Seq[EventRecord]] =
+  override def save(events: E*): IO[EventRecords] =
     events.zipWithIndex.traverse {
       case (e, i) =>
         info.eventSerializer(e).map { e =>
@@ -20,8 +20,8 @@ class DefaultCommandHandlerContext[S, E](
     }
 
   override def withState[S2, E2](info: StateInfo[S2, E2], id: AggId)(
-    handler: (S2, CommandHandlerContext[S2, E2]) => IO[Seq[EventRecord]]
-  ): IO[Seq[EventRecord]] =
+    handler: (S2, CommandHandlerContext[S2, E2]) => IO[EventRecords]
+  ): IO[EventRecords] =
     for
       verS <- stateProviderFactory.create(info).load(id)
       ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS.version, stateProviderFactory)
@@ -29,7 +29,7 @@ class DefaultCommandHandlerContext[S, E](
     yield ress
 }
 
-type SelectiveCommandHandler[S, C, E] = (s: S, c: C, ctx: CommandHandlerContext[S, E]) => Option[IO[Seq[EventRecord]]]
+type SelectiveCommandHandler[S, C, E] = (s: S, c: C, ctx: CommandHandlerContext[S, E]) => Option[IO[EventRecords]]
 
 object SelectiveCommandHandler {
   def toCommandHandler[S, C, E, D](

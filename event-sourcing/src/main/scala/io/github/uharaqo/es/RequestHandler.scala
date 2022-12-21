@@ -3,7 +3,7 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 /** Facade to process a command. Looks up a processor and dispatch a command */
-type CommandProcessor = CommandRequest => IO[Seq[EventRecord]]
+type CommandProcessor = CommandRequest => IO[EventRecords]
 
 /** Provide a processor for a given command FQCN */
 type CommandRegistry = Map[Fqcn, CommandRegistryEntry[?, ?, ?]]
