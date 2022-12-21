@@ -6,7 +6,8 @@ import cats.implicits.*
 
 import scala.concurrent.duration.FiniteDuration
 
-type ProjectionProcessor[T] = (EventRecord, T) => IO[T]
+trait ProjectionProcessor[T]:
+  def apply(event: EventRecord, previous: T): IO[T]
 
 object ProjectionProcessor {
   import io.github.uharaqo.es.ProjectionException.*

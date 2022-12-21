@@ -3,9 +3,12 @@ package io.github.uharaqo.es
 import cats.effect.IO
 import fs2.Stream
 
-/** returns true on success; false on conflict */
-type EventWriter = EventRecords => IO[Boolean]
-type EventReader = (AggInfo, Version) => Stream[IO, VersionedEvent]
+trait EventWriter:
+  /** returns true on success; false on conflict */
+  def apply(records: EventRecords): IO[Boolean] // TODO: just raise exception?
+
+trait EventReader:
+  def apply(info: AggInfo, previousVersion: Version): Stream[IO, VersionedEvent]
 
 trait EventRepository:
   val writer: EventWriter

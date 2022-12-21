@@ -2,7 +2,8 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
-type CommandHandler[S, C, E] = (S, C, CommandHandlerContext[S, E]) => IO[EventRecords]
+trait CommandHandler[S, C, E]:
+  def apply(s: S, c: C, ctx: CommandHandlerContext[S, E]): IO[EventRecords]
 
 /** Helper for command processor */
 trait CommandHandlerContext[S, E]:
