@@ -156,7 +156,7 @@ class UserResourceSetup(xa: Transactor[IO]) {
   val projection =
     ScheduledProjection(
       ProjectionProcessor(
-        info.stateInfo.eventCodec.deserializer,
+        info.stateInfo.eventCodec,
         r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
         2,
         1 seconds

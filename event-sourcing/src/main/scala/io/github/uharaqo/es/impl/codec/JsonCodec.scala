@@ -6,5 +6,5 @@ import com.github.plokhotnyuk.jsoniter_scala.core.*
 import com.github.plokhotnyuk.jsoniter_scala.macros.*
 
 class JsonCodec[A](using codec: JsonValueCodec[A]) extends Codec[A]:
-  override val serializer: Serializer[A]     = v => IO(writeToArray(v))
-  override val deserializer: Deserializer[A] = bytes => IO(readFromArray(bytes))
+  override def apply(v: A): IO[Bytes]     = IO(writeToArray(v))
+  override def apply(bytes: Bytes): IO[A] = IO(readFromArray(bytes))

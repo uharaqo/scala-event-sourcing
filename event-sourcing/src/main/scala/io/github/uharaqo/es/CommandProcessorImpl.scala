@@ -2,10 +2,6 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
-/** Facade to process a command. Looks up a processor and dispatch a command */
-trait CommandProcessor:
-  def apply(input: CommandInput): IO[EventRecords]
-
 object CommandProcessor {
   def apply(env: CommandProcessorEnv, processors: Seq[PartialCommandProcessor]): CommandProcessor = {
     val f: PartialFunction[CommandInput, IO[EventRecords]] =
@@ -13,17 +9,6 @@ object CommandProcessor {
     input => f.applyOrElse(input, _ => IO.raiseError(EsException.InvalidCommand(input.name)))
   }
 }
-
-case class CommandInput(info: AggInfo, name: Fqcn, payload: Bytes)
-
-// TODO: return a response message
-case class CommandOutput(version: Version, message: String)
-
-trait CommandProcessorEnv {
-  val stateProviderFactory: StateProviderFactory
-  val eventWriter: EventWriter
-}
-type PartialCommandProcessor = CommandProcessorEnv => PartialFunction[CommandInput, IO[EventRecords]]
 
 object PartialCommandProcessor {
   def apply[S, C, E](inputParser: CommandInputParser[S, C, E]): PartialCommandProcessor = env =>
@@ -53,6 +38,15 @@ object PartialCommandProcessor {
     }
 }
 
+object CommandInputParser {
+  def apply[S, C, E](commandInfo: CommandInfo[S, C, E]) = new CommandInputParser[S, C, E] {
+    override def isDefinedAt(input: CommandInput): Boolean = commandInfo.fqcn == input.name
+    override def apply(input: CommandInput): IO[ParsedCommandInput[S, C, E]] =
+      for command <- commandInfo.deserializer(input.payload)
+      yield ParsedCommandInput(commandInfo.stateInfo, commandInfo.handler, command)
+  }
+}
+
 case class AggregateInfo[S, C, E, D](
   stateInfo: StateInfo[S, E],
   commandInfoFactory: D => CommandInfo[S, C, E],
@@ -74,27 +68,3 @@ object AggregateInfo {
 
     AggregateInfo(stateInfo, commandInfo)
 }
-
-case class CommandInfo[S, C, E](
-  stateInfo: StateInfo[S, E],
-  fqcn: Fqcn,
-  deserializer: Deserializer[C],
-  handler: CommandHandler[S, C, E],
-)
-
-trait CommandInputParser[S, C, E] extends PartialFunction[CommandInput, IO[ParsedCommandInput[S, C, E]]]
-
-object CommandInputParser {
-  def apply[S, C, E](commandInfo: CommandInfo[S, C, E]) = new CommandInputParser[S, C, E] {
-    override def isDefinedAt(input: CommandInput): Boolean = commandInfo.fqcn == input.name
-    override def apply(input: CommandInput): IO[ParsedCommandInput[S, C, E]] =
-      for command <- commandInfo.deserializer(input.payload)
-      yield ParsedCommandInput(commandInfo.stateInfo, commandInfo.handler, command)
-  }
-}
-
-case class ParsedCommandInput[S, C, E](
-  stateInfo: StateInfo[S, E],
-  handler: CommandHandler[S, C, E],
-  command: C,
-)

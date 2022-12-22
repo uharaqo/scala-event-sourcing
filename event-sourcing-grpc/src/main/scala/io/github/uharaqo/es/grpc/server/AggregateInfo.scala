@@ -34,7 +34,7 @@ object GrpcAggregateInfo {
       PbCodec[E],
       eventHandler,
       commandMessageScalaDescriptor.fullName,
-      PbCodec[C].deserializer,
+      PbCodec[C],
       deps => commandHandlerFactory(deps)
     )
 }
