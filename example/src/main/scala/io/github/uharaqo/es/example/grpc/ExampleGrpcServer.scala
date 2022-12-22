@@ -3,12 +3,14 @@ package io.github.uharaqo.es.example.grpc
 import cats.effect.{ExitCode, IO, IOApp, Resource}
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.example.*
-import io.github.uharaqo.es.grpc.server.{GrpcAggregateInfo, GrpcServer}
+import io.github.uharaqo.es.grpc.server.GrpcServer
 import io.github.uharaqo.es.impl.repository.{DoobieEventRepository, H2TransactorFactory}
 import io.github.uharaqo.es.proto.eventsourcing.*
 import io.github.uharaqo.es.proto.example.*
 import doobie.util.transactor.Transactor
 import io.grpc.{Metadata, Status}
+import scala.concurrent.duration.Duration
+import java.util.concurrent.TimeUnit
 
 object Server extends IOApp {
 
@@ -33,29 +35,47 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   import scalacache.AbstractCache
   import scalacache.caffeine.CaffeineCache
 
-  private val repository = DoobieEventRepository(xa)
+  private val eventRepo = DoobieEventRepository(xa)
+  private val cacheFactory =
+    new CacheFactory {
+      override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
+        CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
+    }
+  private val ttlMillis = 86_400_000L
   private val env = new CommandProcessorEnv {
-    override val stateProviderFactory =
-      DefaultStateProviderFactory(
-        repository.reader,
-        new CacheFactory {
-          override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
-            CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
-        },
-        86_400_000L
-      )
-    override val eventWriter = repository.writer
+    override val stateLoaderFactory = defaultStateLoaderFactory
+    override val eventWriter        = eventRepo.writer
   }
   private val userDeps  = new UserResource.Dependencies {}
   private val groupDeps = new GroupResource.Dependencies {}
-  // private def registryFactory[D] = (info: GrpcAggregateInfo[?, ?, ?, D], dep: D) =>
-  // info.commandRegistry(dep).view.mapValues(a => a.copy(handler = debug(a.handler)))
-//   private val registry = (xa: Transactor[IO]) =>
-//     (registryFactory(UserResource.info, userDeps(xa))
-//       ++ registryFactory(GroupResource.info, groupDeps(xa))).toMap
+
+  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
+  val localStateLoaderFactory =
+    debug(
+      CachedStateLoaderFactory(
+        defaultStateLoaderFactory,
+        ScalaCacheFactory(cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
+      )
+    )
+  val userStateLoader = {
+    import cats.effect.unsafe.implicits.*
+    localStateLoaderFactory(UserResource.stateInfo).unsafeRunSync() // blocking call during setup
+  }
+  val groupStateLoader = {
+    import cats.effect.unsafe.implicits.*
+    localStateLoaderFactory(GroupResource.stateInfo).unsafeRunSync() // blocking call during setup
+  }
   private val processors = Seq(
-    PartialCommandProcessor(CommandInputParser(UserResource.info.commandInfoFactory(userDeps))),
-    PartialCommandProcessor(CommandInputParser(GroupResource.info.commandInfoFactory(groupDeps))),
+    PartialCommandProcessor(
+      CommandInputParser(UserResource.commandInfo(userDeps)),
+      UserResource.stateInfo,
+      userStateLoader
+    ),
+    PartialCommandProcessor(
+      CommandInputParser(GroupResource.commandInfo(groupDeps)),
+      GroupResource.stateInfo,
+      groupStateLoader
+    ),
   )
   private val processor = CommandProcessor(env, processors)
 
@@ -94,11 +114,3 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     }
   )
 }
-//
-// private def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
-//   (s, c, ctx) =>
-//     for
-//       _ <- IO.println(s"Command: $c")
-//       r <- commandHandler(s, c, ctx)
-//       _ <- IO.println(s"Response: $r")
-//     yield r

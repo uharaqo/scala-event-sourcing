@@ -4,7 +4,7 @@ import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
-import io.github.uharaqo.es.grpc.server.{save, GrpcAggregateInfo}
+import io.github.uharaqo.es.grpc.server.save
 import io.github.uharaqo.es.proto.example.*
 
 object UserResource {
@@ -13,13 +13,17 @@ object UserResource {
   implicit val eMapper: UserEvent => UserEventMessage     = PbCodec.toPbMessage
   implicit val cMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
-  lazy val info =
-    GrpcAggregateInfo(
-      "user",
-      User.EMPTY,
-      UserCommandMessage.scalaDescriptor,
-      eventHandler,
-      (deps: Dependencies) => debug(commandHandler(deps))
+  val stateInfo = StateInfo(
+    "user",
+    User.EMPTY,
+    PbCodec[UserEventMessage],
+    eventHandler,
+  )
+  val commandInfo = (deps: Dependencies) =>
+    CommandInfo(
+      UserCommandMessage.scalaDescriptor.fullName,
+      PbCodec[UserCommandMessage],
+      debug(commandHandler(deps))
     )
 
   // state
@@ -81,7 +85,7 @@ object UserResource {
   }
 
   // event handler
-  private val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
+  lazy val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
     e.toUserEvent.asNonEmpty.get match
       case UserRegistered(name, unknownFields) =>
         s match

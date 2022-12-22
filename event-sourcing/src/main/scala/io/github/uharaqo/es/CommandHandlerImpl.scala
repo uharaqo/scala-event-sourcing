@@ -6,7 +6,7 @@ class DefaultCommandHandlerContext[S, E](
   override val info: StateInfo[S, E],
   override val id: AggId,
   override val prevVer: Version,
-  stateProviderFactory: StateProviderFactory,
+  stateLoaderFactory: StateLoaderFactory,
 ) extends CommandHandlerContext[S, E] {
 
   import cats.implicits.*
@@ -23,8 +23,9 @@ class DefaultCommandHandlerContext[S, E](
     handler: (S2, CommandHandlerContext[S2, E2]) => IO[EventRecords]
   ): IO[EventRecords] =
     for
-      verS <- stateProviderFactory(info).load(id)
-      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS.version, stateProviderFactory)
+      stateLoader <- stateLoaderFactory(info)
+      verS        <- stateLoader.load(id)
+      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS.version, stateLoaderFactory)
       ress <- handler(verS.state, ctx)
     yield ress
 }

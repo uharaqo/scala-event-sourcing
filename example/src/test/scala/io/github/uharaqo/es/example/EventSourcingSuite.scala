@@ -1,28 +1,26 @@
 package io.github.uharaqo.es.example
 
-import cats.effect.{ExitCode, IO, Resource}
+import cats.effect.ExitCode
+import cats.effect.IO
+import cats.effect.Resource
 import cats.implicits.*
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.google.protobuf.ByteString
+import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.impl.repository.*
+import io.github.uharaqo.es.proto.eventsourcing.SendCommandRequest
 import io.github.uharaqo.es.proto.example.*
-import doobie.util.transactor.Transactor
 import munit.*
 import scalacache.AbstractCache
 import scalacache.caffeine.CaffeineCache
 import scalapb.GeneratedMessage
 
+import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.*
-import io.github.uharaqo.es.proto.example.UserCommand
-import io.github.uharaqo.es.proto.eventsourcing.SendCommandRequest
-import io.github.uharaqo.es.proto.example.*
-import scalapb.GeneratedMessage
-import java.util.concurrent.ConcurrentHashMap
-import io.github.uharaqo.es.proto.example.UserEvent.Empty
-import java.nio.charset.StandardCharsets
-import com.google.protobuf.ByteString
 
 class EventSourcingSuite extends CatsEffectSuite {
   import EventSourcingSuite.*
@@ -131,59 +129,108 @@ object EventSourcingSuite {
   def run(task: Transactor[IO] => Resource[IO, Unit]) =
     (for
       xa <- H2TransactorFactory.create()
-//      xa <- PostgresTransactorFactory.create()
+      // xa <- PostgresTransactorFactory.create()
       _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
       _ <- task(xa)
     yield ())
       .use(_ => IO(ExitCode.Success))
+
+  def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
+    stateInfo: StateInfo[S, E],
+    processor: CommandProcessor,
+    stateLoaderFactory: StateLoaderFactory
+  ): CommandTester[S, C, E] =
+    val commandFactory =
+      (id: AggId, c: C) =>
+        IO {
+          val p = com.google.protobuf.any.Any.pack(c)
+          CommandInput(
+            info = AggInfo(stateInfo.name, id),
+            name = p.typeUrl.split('/').last,
+            payload = p.value.toByteArray(),
+          )
+        }
+    CommandTester(stateInfo, commandFactory, processor, stateLoaderFactory)
 }
 
 class UserResourceSetup(xa: Transactor[IO]) {
   import UserResource.*
 
+  val ttlMillis = 86_400_000L
+
   val eventRepo = DoobieEventRepository(xa)
   val dep       = new Dependencies {}
-  val env = new CommandProcessorEnv {
-    override val stateProviderFactory =
-      debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-    override val eventWriter = eventRepo.writer
+
+  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
+  val localStateLoaderFactory =
+    debug(
+      CachedStateLoaderFactory(
+        defaultStateLoaderFactory,
+        ScalaCacheFactory(EventSourcingSuite.cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
+      )
+    )
+  val localStateLoader = {
+    import cats.effect.unsafe.implicits.*
+    localStateLoaderFactory(stateInfo).unsafeRunSync() // blocking call during setup
   }
-  val h     = CommandInputParser(info.commandInfoFactory(dep))
-  val pproc = PartialCommandProcessor(h)
-  val proc  = CommandProcessor(env, Seq(pproc))
+
+  val env = new CommandProcessorEnv {
+    override val stateLoaderFactory = defaultStateLoaderFactory
+    override val eventWriter        = eventRepo.writer
+  }
+
+  val inputParser = CommandInputParser(commandInfo(dep))
+  val proc        = CommandProcessor(env, Seq(PartialCommandProcessor(inputParser, stateInfo, localStateLoader)))
 
   val projection =
     ScheduledProjection(
       ProjectionProcessor(
-        info.stateInfo.eventCodec,
-        r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
+        stateInfo.eventCodec,
+        r => IO.println(s"--- ${stateInfo.name}, $r ---").map(_ => r.asRight),
         2,
         1 seconds
       ),
       ProjectionEvent("", 0L, 0, null),
-      prev => EventQuery(info.stateInfo.name, prev.timestamp),
+      prev => EventQuery(stateInfo.name, prev.timestamp),
       eventRepo,
       100 millis,
       100 millis,
     )
 
-  val tester = info.newTester(proc, env.stateProviderFactory)
+  val tester: CommandTester[User, UserCommandMessage, UserEventMessage] =
+    EventSourcingSuite.newTester(stateInfo, proc, env.stateLoaderFactory)
 }
 
 class GroupResourceSetup(xa: Transactor[IO]) {
   import GroupResource.*
 
+  val ttlMillis = 86_400_000L
+
   val eventRepo = DoobieEventRepository(xa)
   val dep       = new Dependencies {}
-  val env = new CommandProcessorEnv {
-    override val stateProviderFactory =
-      debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-    override val eventWriter = eventRepo.writer
-  }
-  val h     = CommandInputParser(info.commandInfoFactory(dep))
-  val pproc = PartialCommandProcessor(h)
-  val proc  = CommandProcessor(env, Seq(pproc))
 
-  val tester = info.newTester(proc, env.stateProviderFactory)
+  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
+  val localStateLoaderFactory =
+    debug(
+      CachedStateLoaderFactory(
+        defaultStateLoaderFactory,
+        ScalaCacheFactory(EventSourcingSuite.cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
+      )
+    )
+  val localStateLoader = {
+    import cats.effect.unsafe.implicits.*
+    localStateLoaderFactory(stateInfo).unsafeRunSync() // blocking call during setup
+  }
+
+  val env = new CommandProcessorEnv {
+    override val stateLoaderFactory = defaultStateLoaderFactory
+    override val eventWriter        = eventRepo.writer
+  }
+
+  val inputParser = CommandInputParser(commandInfo(dep))
+  val proc        = CommandProcessor(env, Seq(PartialCommandProcessor(inputParser, stateInfo, localStateLoader)))
+
+  val tester: CommandTester[Group, GroupCommandMessage, GroupEventMessage] =
+    EventSourcingSuite.newTester(stateInfo, proc, env.stateLoaderFactory)
 }

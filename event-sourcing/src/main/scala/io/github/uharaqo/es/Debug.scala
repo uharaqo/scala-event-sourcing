@@ -21,15 +21,15 @@ def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C
       _ <- IO.println(s"  Response: $r")
     yield r
 
-def debug(stateProviderFactory: StateProviderFactory): StateProviderFactory =
-  new StateProviderFactory {
-    override def apply[S, E](info: StateInfo[S, E]): StateProvider[S] = {
-      val stateProvider = stateProviderFactory(info)
-      { (id, prev) =>
-        for
-          s <- stateProvider.load(id, prev)
-          _ <- IO.println(s"  State: $s")
-        yield s
+def debug(stateLoaderFactory: StateLoaderFactory): StateLoaderFactory =
+  new StateLoaderFactory {
+    override def apply[S, E](info: StateInfo[S, E]): IO[StateLoader[S]] =
+      for stateLoader <- stateLoaderFactory(info)
+      yield new StateLoader[S] {
+        override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] =
+          for
+            s <- stateLoader.load(id, prevState)
+            _ <- IO.println(s"  State: $s")
+          yield s
       }
-    }
   }

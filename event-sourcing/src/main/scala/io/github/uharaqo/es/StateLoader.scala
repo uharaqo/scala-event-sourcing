@@ -2,13 +2,13 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
-trait StateProvider[S]:
+trait StateLoader[S]:
   def load(id: AggId): IO[VersionedState[S]] = load(id, None)
   def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]]
   def afterWrite(id: AggId, prevState: VersionedState[S], records: EventRecords): IO[Unit] = IO.unit
 
-trait StateProviderFactory:
-  def apply[S, E](info: StateInfo[S, E]): StateProvider[S]
+trait StateLoaderFactory:
+  def apply[S, E](info: StateInfo[S, E]): IO[StateLoader[S]]
 
 case class StateInfo[S, E](
   name: AggName,

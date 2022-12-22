@@ -13,9 +13,8 @@ class CommandTester[S, C, E](
   info: StateInfo[S, E],
   commandInputFactory: (AggId, C) => IO[CommandInput],
   dispatcher: CommandProcessor,
-  stateProviderFactory: StateProviderFactory,
+  stateLoaderFactory: StateLoaderFactory,
 ) {
-  private val stateProvider = stateProviderFactory(info)
 
   def send(aggId: AggId, command: C): IO[EventRecords] =
     commandInputFactory(aggId, command) >>= send
@@ -43,7 +42,10 @@ class CommandTester[S, C, E](
     }
 
     def states(states: (AggId, S)*) = io >>= { v =>
-      for ss <- states.traverse(e => stateProvider.load(e._1)) yield {
+      for
+        stateLoader <- stateLoaderFactory(info)
+        ss          <- states.traverse(e => stateLoader.load(e._1))
+      yield {
         assertEquals(ss.map(_.state), states.map(_._2))
         v
       }
@@ -58,22 +60,4 @@ class CommandTester[S, C, E](
           intercept[EsException.CommandHandlerFailure](())
       }
   }
-}
-
-extension [S, C <: GeneratedMessage, E <: GeneratedMessage, D](info: AggregateInfo[S, C, E, D]) {
-  def newTester(
-    processor: CommandProcessor,
-    stateProviderFactory: StateProviderFactory
-  ): CommandTester[S, C, E] =
-    val commandFactory =
-      (id: AggId, c: C) =>
-        IO {
-          val p = com.google.protobuf.any.Any.pack(c)
-          CommandInput(
-            info = AggInfo(info.stateInfo.name, id),
-            name = p.typeUrl.split('/').last,
-            payload = p.value.toByteArray(),
-          )
-        }
-    CommandTester(info.stateInfo, commandFactory, processor, stateProviderFactory)
 }
