@@ -38,7 +38,7 @@ object GroupResource {
       case c: CreateGroup =>
         s match
           case Group.EMPTY =>
-            ctx.withState(UserResource.info.stateInfo, c.ownerId) { (s2, ctx2) =>
+            ctx.withState(UserResource.info._1, c.ownerId) { (s2, ctx2) =>
               if s2 == UserResource.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
               else ctx.save(GroupCreated(c.ownerId, c.name))
             }
@@ -57,7 +57,7 @@ object GroupResource {
           case Group(ownerId, name, users) =>
             if users.contains(c.userId) then ctx.fail(IllegalStateException("Already a member"))
             else
-              ctx.withState(UserResource.info.stateInfo, c.userId) { (s, ctx2) =>
+              ctx.withState(UserResource.info._1, c.userId) { (s, ctx2) =>
                 if s == UserResource.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
                 else ctx.save(UserAdded(c.userId))
               }

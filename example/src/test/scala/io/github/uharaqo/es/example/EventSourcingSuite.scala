@@ -4,7 +4,6 @@ import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
 import com.github.benmanes.caffeine.cache.Caffeine
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.grpc.server.GrpcAggregateInfo
 import io.github.uharaqo.es.impl.repository.*
 import io.github.uharaqo.es.proto.example.*
 import doobie.util.transactor.Transactor
@@ -144,15 +143,20 @@ class UserResourceSetup(xa: Transactor[IO]) {
   import UserResource.*
 
   val eventRepo = DoobieEventRepository(xa)
-  val stateProviderFactory =
-    debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-  val dep  = new Dependencies {}
-  val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
+  val dep       = new Dependencies {}
+  val env = new CommandProcessorEnv {
+    override val stateProviderFactory =
+      debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
+    override val eventWriter = eventRepo.writer
+  }
+  val h     = CommandInputParser(info.commandInfoFactory(dep))
+  val pproc = PartialCommandProcessor(h)
+  val proc  = CommandProcessor(env, Seq(pproc))
 
   val projection =
     ScheduledProjection(
       ProjectionProcessor(
-        info.eventCodec.deserializer,
+        info.stateInfo.eventCodec.deserializer,
         r => IO.println(s"--- ${info.stateInfo.name}, $r ---").map(_ => r.asRight),
         2,
         1 seconds
@@ -164,17 +168,22 @@ class UserResourceSetup(xa: Transactor[IO]) {
       100 millis,
     )
 
-  val tester = info.newTester(proc, stateProviderFactory)
+  val tester = info.newTester(proc, env.stateProviderFactory)
 }
 
 class GroupResourceSetup(xa: Transactor[IO]) {
   import GroupResource.*
 
   val eventRepo = DoobieEventRepository(xa)
-  val stateProviderFactory =
-    debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
-  val dep  = new Dependencies {}
-  val proc = CommandProcessor(info.commandRegistry(dep), stateProviderFactory, eventRepo.writer)
+  val dep       = new Dependencies {}
+  val env = new CommandProcessorEnv {
+    override val stateProviderFactory =
+      debug(DefaultStateProviderFactory(eventRepo.reader, EventSourcingSuite.cacheFactory, 86_400_000L))
+    override val eventWriter = eventRepo.writer
+  }
+  val h     = CommandInputParser(info.commandInfoFactory(dep))
+  val pproc = PartialCommandProcessor(h)
+  val proc  = CommandProcessor(env, Seq(pproc))
 
-  val tester = info.newTester(proc, stateProviderFactory)
+  val tester = info.newTester(proc, env.stateProviderFactory)
 }

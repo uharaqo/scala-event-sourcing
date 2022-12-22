@@ -29,7 +29,7 @@ object UserResource {
     val EMPTY = User("", 0)
 
   // command handlers
-  private lazy val commandHandler =
+  lazy val commandHandler =
     PartialCommandHandler.toCommandHandler(
       Seq(registerUser, addPoint, sendPoint),
       (c: UserCommandMessage) => c.toUserCommand
