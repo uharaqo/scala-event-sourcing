@@ -23,7 +23,7 @@ class DefaultCommandHandlerContext[S, E](
     handler: (S2, CommandHandlerContext[S2, E2]) => IO[EventRecords]
   ): IO[EventRecords] =
     for
-      verS <- stateProviderFactory.create(info).load(id)
+      verS <- stateProviderFactory(info).load(id)
       ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS.version, stateProviderFactory)
       ress <- handler(verS.state, ctx)
     yield ress

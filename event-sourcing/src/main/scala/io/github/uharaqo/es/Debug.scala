@@ -23,8 +23,8 @@ def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C
 
 def debug(stateProviderFactory: StateProviderFactory): StateProviderFactory =
   new StateProviderFactory {
-    override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = {
-      val stateProvider = stateProviderFactory.create(info)
+    override def apply[S, E](info: StateInfo[S, E]): StateProvider[S] = {
+      val stateProvider = stateProviderFactory(info)
       { (id, prev) =>
         for
           s <- stateProvider.load(id, prev)

@@ -8,7 +8,7 @@ trait StateProvider[S]:
   def afterWrite(id: AggId, prevState: VersionedState[S], records: EventRecords): IO[Unit] = IO.unit
 
 trait StateProviderFactory:
-  def create[S, E](info: StateInfo[S, E]): StateProvider[S]
+  def apply[S, E](info: StateInfo[S, E]): StateProvider[S]
 
 case class StateInfo[S, E](
   name: AggName,

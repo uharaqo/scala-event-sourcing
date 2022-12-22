@@ -21,7 +21,7 @@ object PartialCommandProcessor {
           command       = parsed.command
           stateInfo     = parsed.stateInfo
           handler       = parsed.handler
-          stateProvider = env.stateProviderFactory.create(stateInfo)
+          stateProvider = env.stateProviderFactory(stateInfo)
 
           prevState <- stateProvider.load(id)
 

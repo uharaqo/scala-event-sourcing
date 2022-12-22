@@ -36,14 +36,14 @@ object MemoisedStateProviderFactory {
 
   def apply(stateProviderFactory: StateProviderFactory) =
     new StateProviderFactory {
-      override def create[S, E](info: StateInfo[S, E]): StateProvider[S] =
-        m.computeIfAbsent(info.name, _ => stateProviderFactory.create(info)).asInstanceOf[StateProvider[S]]
+      override def apply[S, E](info: StateInfo[S, E]): StateProvider[S] =
+        m.computeIfAbsent(info.name, _ => stateProviderFactory(info)).asInstanceOf[StateProvider[S]]
     }
 }
 
 class EventReaderStateProviderFactory(eventReader: EventReader) extends StateProviderFactory {
 
-  override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = { (id, prev) =>
+  override def apply[S, E](info: StateInfo[S, E]): StateProvider[S] = { (id, prev) =>
     val events = eventReader(AggInfo(info.name, id), prev.map(_.version).getOrElse(0L))
 
     info.nextState(prev, events)
@@ -74,9 +74,9 @@ class CachedStateProviderFactory(
 ) extends StateProviderFactory {
   import cats.implicits.*
 
-  override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = {
+  override def apply[S, E](info: StateInfo[S, E]): StateProvider[S] = {
     val stateCache = cacheFactory.create(info)
-    val original   = originalFactory.create(info)
+    val original   = originalFactory(info)
 
     new StateProvider[S]:
       override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] =

@@ -15,7 +15,7 @@ class CommandTester[S, C, E](
   dispatcher: CommandProcessor,
   stateProviderFactory: StateProviderFactory,
 ) {
-  private val stateProvider = stateProviderFactory.create(info)
+  private val stateProvider = stateProviderFactory(info)
 
   def send(aggId: AggId, command: C): IO[EventRecords] =
     commandInputFactory(aggId, command) >>= send
