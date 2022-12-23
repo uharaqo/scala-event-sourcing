@@ -10,15 +10,15 @@ object PbCodec {
     val serializer: Serializer[A]     = PbSerializer[A]
     val deserializer: Deserializer[A] = PbDeserializer[A]
 
-    override def apply(v: A): IO[Bytes]     = serializer(v)
-    override def apply(bytes: Bytes): IO[A] = deserializer(bytes)
+    override def convert(v: A): IO[Bytes]     = serializer.convert(v)
+    override def convert(bytes: Bytes): IO[A] = deserializer.convert(bytes)
   }
 
   class PbSerializer[A <: GeneratedMessage] extends Serializer[A]:
-    override def apply(v: A): IO[Bytes] = IO(v.toByteArray)
+    override def convert(v: A): IO[Bytes] = IO(v.toByteArray)
 
   class PbDeserializer[A <: GeneratedMessage](using cmp: GeneratedMessageCompanion[A]) extends Deserializer[A]:
-    override def apply(bytes: Bytes): IO[A] = IO(cmp.parseFrom(bytes))
+    override def convert(bytes: Bytes): IO[A] = IO(cmp.parseFrom(bytes))
 
   def toPbMessage[M, T](content: T)(using mapper: TypeMapper[M, T]) = mapper.toBase(content)
 }

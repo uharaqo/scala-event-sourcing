@@ -8,7 +8,7 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import com.google.protobuf.ByteString
 import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.impl.repository.*
+import io.github.uharaqo.es.repository.*
 import io.github.uharaqo.es.proto.eventsourcing.SendCommandRequest
 import io.github.uharaqo.es.proto.example.*
 import munit.*
@@ -144,7 +144,7 @@ class TestSetup(val xa: Transactor[IO]) {
   val env =
     new CommandProcessorEnv {
       override val eventRepository    = DoobieEventRepository(xa)
-      override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository.reader)
+      override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
     }
 
   val processor =
@@ -204,7 +204,7 @@ class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
       commandInfo(deps),
       localStateLoader,
       env.stateLoaderFactory,
-      env.eventRepository.writer
+      env.eventRepository
     )
 }
 
@@ -225,6 +225,6 @@ class GroupResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
       commandInfo(deps),
       localStateLoader,
       env.stateLoaderFactory,
-      env.eventRepository.writer
+      env.eventRepository
     )
 }

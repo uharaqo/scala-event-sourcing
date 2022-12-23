@@ -18,7 +18,7 @@ extension [S, E](info: StateInfo[S, E]) {
       .fold(IO.pure(initialState)) { (prevState, ve) =>
         for
           prevVerS <- prevState
-          nextE    <- info.eventCodec(ve.event)
+          nextE    <- info.eventCodec.convert(ve.event)
           nextS    <- IO.pure(info.eventHandler(prevVerS.state, nextE))
         yield VersionedState(ve.version, nextS.getOrElse(prevVerS.state))
       }
@@ -31,7 +31,7 @@ class EventReaderStateLoaderFactory(eventReader: EventReader) extends StateLoade
     IO.pure(
       new StateLoader[S] {
         override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] = {
-          val events = eventReader(AggInfo(info.name, id), prevState.map(_.version).getOrElse(0L))
+          val events = eventReader.load(AggInfo(info.name, id), prevState.map(_.version).getOrElse(0L))
           info.nextState(prevState, events)
         }
       }

@@ -35,8 +35,10 @@ object GroupResource {
     val EMPTY = Group("", "", Set.empty)
 
   // command handlers
-  lazy val commandHandler =
-    PartialCommandHandler.toCommandHandler(Seq(createGroup, addUser), (c: GroupCommandMessage) => c.toGroupCommand)
+  lazy val commandHandler: Dependencies => CommandHandler[Group, GroupCommandMessage, GroupEventMessage] =
+    Seq(createGroup, addUser)
+      .traverse(identity)
+      .andThen(PartialCommandHandler.toCommandHandler(_, _.toGroupCommand))
 
   private val createGroup: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
     {

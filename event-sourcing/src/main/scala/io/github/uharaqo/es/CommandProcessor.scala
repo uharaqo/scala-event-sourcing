@@ -5,8 +5,9 @@ import cats.effect.IO
 /** request that comes from outside this system */
 case class CommandInput(info: AggInfo, name: Fqcn, payload: Bytes)
 
-// TODO: return a response message
-case class CommandOutput(version: Version, message: String)
+case class CommandOutput(records: EventRecords) {
+  def version: Option[Version] = records.lastOption.map(_.version)
+}
 
 /** information related to the command handler */
 case class CommandInfo[S, C, E](
@@ -16,7 +17,7 @@ case class CommandInfo[S, C, E](
 )
 
 /** facade to process a command. Looks up a processor and dispatch a command */
-type CommandProcessor = CommandInput => IO[EventRecords]
+type CommandProcessor = CommandInput => IO[CommandOutput]
 
 /** standalone CommandProcessor that handles some of the CommandInputs */
 type PartialCommandProcessor = PartialFunction[CommandInput, IO[EventRecords]]

@@ -24,7 +24,8 @@ object ProjectionProcessor {
   ): ProjectionProcessor[T] = { (event, prev) =>
 
     val deserialize = (event: EventRecord) =>
-      deserializer(event.event)
+      deserializer
+        .convert(event.event)
         .map(e => ProjectionEvent(event.id, event.version, event.timestamp, e))
         .handleErrorWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t.some)))
 
@@ -48,8 +49,7 @@ object ProjectionProcessor {
       }
     }
 
-    deserialize(event)
-      >>= { e => handle(e, retryInterval, maxRetry) }
+    deserialize(event) >>= { handle(_, retryInterval, maxRetry) }
   }
 }
 

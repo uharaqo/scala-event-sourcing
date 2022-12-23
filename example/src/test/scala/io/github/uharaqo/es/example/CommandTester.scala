@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 class CommandTester[S, C, E](
   info: StateInfo[S, E],
   commandInputFactory: (AggId, C) => IO[CommandInput],
-  dispatcher: CommandProcessor,
+  processor: CommandProcessor,
   stateLoaderFactory: StateLoaderFactory,
 ) {
 
@@ -22,10 +22,8 @@ class CommandTester[S, C, E](
   def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[EventRecords] =
     send(aggId, mapper(command))
 
-  def send(input: CommandInput): IO[EventRecords] = {
-    import unsafe.implicits.*
-    dispatcher(input)
-  }
+  def send(input: CommandInput): IO[EventRecords] =
+    processor(input).map(_.records)
 
   extension (io: IO[EventRecords]) {
     def events(events: E*): IO[EventRecords] =
@@ -34,22 +32,20 @@ class CommandTester[S, C, E](
     def events[ES](events: ES*)(implicit mapper: ES => E): IO[EventRecords] =
       validateEvents(events.map(mapper))
 
-    private def validateEvents(events: Seq[E]) = io >>= { v =>
-      for es <- v.traverse(r => info.eventCodec(r.event)) yield {
-        assertEquals(es, events)
-        v
-      }
-    }
-
-    def states(states: (AggId, S)*) = io >>= { v =>
+    private def validateEvents(events: Seq[E]) =
       for
+        v  <- io
+        es <- v.traverse(r => info.eventCodec.convert(r.event))
+        _ = assertEquals(es, events)
+      yield v
+
+    def states(states: (AggId, S)*) =
+      for
+        v           <- io
         stateLoader <- stateLoaderFactory(info)
         ss          <- states.traverse(e => stateLoader.load(e._1))
-      yield {
-        assertEquals(ss.map(_.state), states.map(_._2))
-        v
-      }
-    }
+        _ = assertEquals(ss.map(_.state), states.map(_._2))
+      yield v
 
     def failsBecause(message: String): IO[Unit] =
       io.attempt.map {

@@ -36,11 +36,10 @@ object UserResource {
     val EMPTY = User("", 0)
 
   // command handlers
-  lazy val commandHandler =
-    PartialCommandHandler.toCommandHandler(
-      Seq(registerUser, addPoint, sendPoint),
-      (c: UserCommandMessage) => c.toUserCommand
-    )
+  lazy val commandHandler: Dependencies => CommandHandler[User, UserCommandMessage, UserEventMessage] =
+    Seq(registerUser, addPoint, sendPoint)
+      .traverse(identity)
+      .map(PartialCommandHandler.toCommandHandler(_, _.toUserCommand))
 
   private val registerUser: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
     {

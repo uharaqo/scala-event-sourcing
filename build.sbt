@@ -37,8 +37,17 @@ lazy val eventSourcing =
     .settings(
       name := "event-sourcing",
       libraryDependencies ++=
-        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps
+        fs2Deps ++ serializerDeps ++ cacheDeps
     )
+
+lazy val eventSourcingDoobie =
+  (project in file("event-sourcing-doobie"))
+    .settings(baseSettings)
+    .settings(
+      name := "event-sourcing-doobie",
+      libraryDependencies ++= doobieDeps
+    )
+    .dependsOn(eventSourcing)
 
 lazy val eventSourcingGrpc =
   (project in file("event-sourcing-grpc"))
@@ -56,9 +65,7 @@ lazy val exampleProto =
     .settings(
       name := "example-proto",
       Compile / PB.targets :=
-        Seq(
-          scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"
-        ),
+        Seq(scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"),
       libraryDependencies ++= protoDeps,
       publish / skip := true,
     )
@@ -68,13 +75,12 @@ lazy val example =
     .settings(baseSettings)
     .settings(
       name := "example",
-      libraryDependencies ++=
-        fs2Deps ++ serializerDeps ++ doobieDeps ++ cacheDeps,
+      // libraryDependencies ++= serializerDeps ++ cacheDeps,
       publish / skip := true,
     )
-    .dependsOn(eventSourcing, eventSourcingGrpc, exampleProto)
+    .dependsOn(eventSourcing, eventSourcingDoobie, eventSourcingGrpc, exampleProto)
 
 val root =
   (project in file("."))
     .settings(publish / skip := true)
-    .aggregate(eventSourcingGrpc, eventSourcing, example)
+    .aggregate(eventSourcing, eventSourcingDoobie, eventSourcingGrpc, example)
