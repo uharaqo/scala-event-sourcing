@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package io.github.uharaqo.es.proto.example;
+package io.github.uharaqo.es.example.proto;
 
 message UserCommand {
   oneof sealed_value {

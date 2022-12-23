@@ -1,7 +1,7 @@
 package io.github.uharaqo.es.grpc.server
 
 import cats.effect.{ExitCode, IO}
-import io.github.uharaqo.es.proto.eventsourcing.*
+import io.github.uharaqo.es.grpc.proto.*
 import fs2.grpc.syntax.all.*
 import io.grpc.Metadata
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder

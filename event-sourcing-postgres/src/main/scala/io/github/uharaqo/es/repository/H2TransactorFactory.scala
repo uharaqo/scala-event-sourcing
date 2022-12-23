@@ -1,4 +1,4 @@
-package io.github.uharaqo.es.impl.repository
+package io.github.uharaqo.es.repository
 
 import cats.effect.{IO, Resource}
 import doobie.h2.H2Transactor

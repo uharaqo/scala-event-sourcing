@@ -5,8 +5,8 @@ import cats.implicits.*
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
 import io.github.uharaqo.es.grpc.server.save
-import io.github.uharaqo.es.proto.example.*
-import io.github.uharaqo.es.proto.example.UserEvent.Empty
+import io.github.uharaqo.es.example.proto.*
+import io.github.uharaqo.es.example.proto.UserEvent.Empty
 
 object GroupResource {
 
@@ -35,8 +35,10 @@ object GroupResource {
     val EMPTY = Group("", "", Set.empty)
 
   // command handlers
-  lazy val commandHandler =
-    PartialCommandHandler.toCommandHandler(Seq(createGroup, addUser), (c: GroupCommandMessage) => c.toGroupCommand)
+  lazy val commandHandler: Dependencies => CommandHandler[Group, GroupCommandMessage, GroupEventMessage] =
+    Seq(createGroup, addUser)
+      .traverse(identity)
+      .andThen(PartialCommandHandler.toCommandHandler(_, _.toGroupCommand))
 
   private val createGroup: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
     {

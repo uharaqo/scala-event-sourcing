@@ -1,7 +1,7 @@
 package io.github.uharaqo.es.grpc.client
 
 import cats.effect.IO
-import io.github.uharaqo.es.proto.eventsourcing.*
+import io.github.uharaqo.es.grpc.proto.*
 import io.grpc.{ManagedChannel, Metadata}
 
 class CommandHandlerClient(channel: ManagedChannel) {

@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-package io.github.uharaqo.es.proto;
+package io.github.uharaqo.es.grpc.proto;
+
 import "google/protobuf/any.proto";
 import "google/protobuf/wrappers.proto";
 

@@ -8,10 +8,9 @@ import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.example.*
 import io.github.uharaqo.es.grpc.server.GrpcServer
-import io.github.uharaqo.es.impl.repository.DoobieEventRepository
-import io.github.uharaqo.es.impl.repository.H2TransactorFactory
-import io.github.uharaqo.es.proto.eventsourcing.*
-import io.github.uharaqo.es.proto.example.*
+import io.github.uharaqo.es.repository.DoobieEventRepository
+import io.github.uharaqo.es.repository.H2TransactorFactory
+import io.github.uharaqo.es.grpc.proto.*
 import io.grpc.Metadata
 import io.grpc.Status
 
@@ -49,7 +48,7 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   private val ttlMillis = 86_400_000L
   private val env = new CommandProcessorEnv {
     override val eventRepository    = DoobieEventRepository(xa)
-    override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository.reader)
+    override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
   }
   private val userDeps  = new UserResource.Dependencies {}
   private val groupDeps = new GroupResource.Dependencies {}
@@ -75,14 +74,14 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
       UserResource.commandInfo(userDeps),
       userStateLoader,
       env.stateLoaderFactory,
-      env.eventRepository.writer,
+      env.eventRepository,
     ),
     PartialCommandProcessor(
       GroupResource.stateInfo,
       GroupResource.commandInfo(groupDeps),
       groupStateLoader,
       env.stateLoaderFactory,
-      env.eventRepository.writer,
+      env.eventRepository,
     ),
   )
   private val processor = CommandProcessor(processors)
@@ -94,11 +93,6 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))
   }
-
-  private def handle(input: CommandInput): IO[CommandOutput] =
-    processor(input)
-      .map(records => records.lastOption.getOrElse(throw Status.UNKNOWN.asRuntimeException()))
-      .map(r => CommandOutput(r.version, "TODO"))
 
   private val errorHandler = (t: Throwable) =>
     t.printStackTrace() // TODO
@@ -114,8 +108,8 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
       override def sendCommand(request: SendCommandRequest, ctx: Metadata): IO[SendCommandResponse] =
         (for
           parsed <- parser(request)
-          result <- handle(parsed)
-        yield SendCommandResponse(result.version, result.message))
+          output <- processor(parsed)
+        yield SendCommandResponse(output.version.getOrElse(throw Status.UNKNOWN.asRuntimeException()), "TODO"))
           .handleErrorWith(errorHandler)
 
       override def loadState(request: LoadStateRequest, ctx: Metadata): IO[LoadStateResponse] = ???

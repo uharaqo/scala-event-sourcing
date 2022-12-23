@@ -13,7 +13,7 @@ class DefaultCommandHandlerContext[S, E](
   override def save(events: E*): IO[EventRecords] =
     events.zipWithIndex.traverse {
       case (e, i) =>
-        info.eventCodec(e).map { e =>
+        info.eventCodec.convert(e).map { e =>
           EventRecord(info.name, id, prevState.version + i + 1, System.currentTimeMillis(), e)
         }
     }
@@ -32,24 +32,23 @@ class DefaultCommandHandlerContext[S, E](
 type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]
 
 object PartialCommandHandler {
-  def toCommandHandler[S, C, E, D](
-    handlers: Seq[D => PartialCommandHandler[S, C, E]]
-  ): D => CommandHandler[S, C, E] = { dep => (s, c, ctx) =>
+  def toCommandHandler[S, C, E](
+    handlers: Seq[PartialCommandHandler[S, C, E]]
+  ): CommandHandler[S, C, E] = { (s, c, ctx) =>
     val f: PartialFunction[C, IO[EventRecords]] =
       handlers
-        .map(_(dep))
         .map(_(s, ctx))
         .foldLeft(PartialFunction.empty)((pf1, pf2) => if pf2.isDefinedAt(c) then pf1.orElse(pf2) else pf1)
 
     if f.isDefinedAt(c) then f(c) else IO.raiseError(EsException.InvalidCommand(ctx.info.name))
   }
 
-  def toCommandHandler[S, C, E, D, C2](
-    handlers: Seq[D => PartialCommandHandler[S, C2, E]],
+  def toCommandHandler[S, C, E, C2](
+    handlers: Seq[PartialCommandHandler[S, C2, E]],
     mapper: C => C2
-  ): D => CommandHandler[S, C, E] = { dep => (s, c, ctx) =>
+  ): CommandHandler[S, C, E] = { (s, c, ctx) =>
     val c2 = mapper(c)
-    val f  = toCommandHandler[S, C2, E, D](handlers)(dep)
+    val f  = toCommandHandler[S, C2, E](handlers)
     f(s, c2, ctx)
   }
 }

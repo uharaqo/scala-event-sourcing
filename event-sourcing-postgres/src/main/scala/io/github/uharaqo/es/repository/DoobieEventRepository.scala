@@ -1,4 +1,4 @@
-package io.github.uharaqo.es.impl.repository
+package io.github.uharaqo.es.repository
 
 import cats.effect.{IO, Resource}
 import io.github.uharaqo.es.*
@@ -18,7 +18,7 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository with Pro
   def initTables(): IO[Unit] =
     Seq(CREATE_EVENTS_TABLE).traverse(_.update.run).transact(xa).void
 
-  override val writer: EventWriter = { records =>
+  override def write(records: EventRecords) =
     Update[EventRecord](INSERT_EVENT)
       .updateMany(records)
       .transact(xa)
@@ -28,14 +28,13 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository with Pro
       .handleErrorWith(t => IO.raiseError(EsException.EventStoreFailure(t)))
       // Return true if all the records were applied or there was no record
       .map(z => z.map(_ == records.size).fold(b => true, b => b))
-  }
-  override val reader: EventReader = { (info, prevVer) =>
-    SELECT_EVENTS(info, prevVer)
+
+  override def load(info: AggInfo, previousVersion: Version): Stream[IO, VersionedEvent] =
+    SELECT_EVENTS(info, previousVersion)
       .query[VersionedEvent]
       .stream
       .transact(xa)
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
-  }
 
   override def load(query: EventQuery): Stream[IO, EventRecord] =
     SELECT_EVENTS_BY_RESOURCE(query.name, query.lastTimestamp).query[EventRecord].stream.transact(xa)
