@@ -18,16 +18,16 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository with Pro
   def initTables(): IO[Unit] =
     Seq(CREATE_EVENTS_TABLE).traverse(_.update.run).transact(xa).void
 
-  override val writer: EventWriter = { responses =>
+  override val writer: EventWriter = { records =>
     Update[EventRecord](INSERT_EVENT)
-      .updateMany(responses)
+      .updateMany(records)
       .transact(xa)
       // Return false on a PK conflict
       .attemptSomeSqlState { case sqlstate.class23.UNIQUE_VIOLATION => false }
       // throw error on any other exceptions
       .handleErrorWith(t => IO.raiseError(EsException.EventStoreFailure(t)))
-      // Return true if all the records were applied or there was no response
-      .map(z => z.map(_ == responses.size).fold(b => true, b => b))
+      // Return true if all the records were applied or there was no record
+      .map(z => z.map(_ == records.size).fold(b => true, b => b))
   }
   override val reader: EventReader = { (info, prevVer) =>
     SELECT_EVENTS(info, prevVer)

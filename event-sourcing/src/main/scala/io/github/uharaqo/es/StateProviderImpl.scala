@@ -2,6 +2,7 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 import fs2.Stream
+import cats.effect.kernel.Ref
 
 extension [S, E](info: StateInfo[S, E]) {
   def nextState(
@@ -17,34 +18,53 @@ extension [S, E](info: StateInfo[S, E]) {
       .fold(IO.pure(initialState)) { (prevState, ve) =>
         for
           prevVerS <- prevState
-          nextE    <- info.eventDeserializer(ve.event)
+          nextE    <- info.eventCodec(ve.event)
           nextS    <- IO.pure(info.eventHandler(prevVerS.state, nextE))
         yield VersionedState(ve.version, nextS.getOrElse(prevVerS.state))
       }
       .flatten
 }
 
-object MemoisedStateProviderFactory {
-  import java.util.concurrent.ConcurrentHashMap
+class EventReaderStateLoaderFactory(eventReader: EventReader) extends StateLoaderFactory {
 
-  // TODO: replace this with something else
-  private val m = ConcurrentHashMap[String, StateProvider[?]]()
-
-  def apply(stateProviderFactory: StateProviderFactory) =
-    new StateProviderFactory {
-      override def create[S, E](info: StateInfo[S, E]): StateProvider[S] =
-        m.computeIfAbsent(info.name, _ => stateProviderFactory.create(info)).asInstanceOf[StateProvider[S]]
-    }
+  override def apply[S, E](info: StateInfo[S, E]): IO[StateLoader[S]] =
+    IO.pure(
+      new StateLoader[S] {
+        override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] = {
+          val events = eventReader(AggInfo(info.name, id), prevState.map(_.version).getOrElse(0L))
+          info.nextState(prevState, events)
+        }
+      }
+    )
 }
 
-class EventReaderStateProviderFactory(eventReader: EventReader) extends StateProviderFactory {
+class CachedStateLoaderFactory(
+  originalFactory: StateLoaderFactory,
+  cacheFactory: StateCacheFactory
+) extends StateLoaderFactory {
+  import cats.implicits.*
 
-  override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = { (id, prev) =>
-    val events = eventReader(AggInfo(info.name, id), prev.map(_.version).getOrElse(0L))
+  override def apply[S, E](info: StateInfo[S, E]): IO[StateLoader[S]] = {
+    val stateCache = cacheFactory.create(info)
 
-    info.nextState(prev, events)
+    IO.pure(new StateLoader[S]:
+      override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] =
+        for
+          original <- originalFactory(info)
+          o        <- stateCache.get(id)
+          v        <- original.load(id, o.orElse(prevState)) // TODO: choose one with a larger version
+          _        <- stateCache.set(id, v)
+        yield v
+
+      override def onSuccess(id: AggId, prevState: VersionedState[S], records: EventRecords): IO[Unit] =
+        info.nextState(Some(prevState), Stream(records.map(r => VersionedEvent(r.version, r.event))*))
+          >>= { stateCache.set(id, _) }
+    )
   }
 }
+
+import scalacache.*
+import scala.concurrent.duration.Duration
 
 trait StateCache[S]:
   def get(id: AggId): IO[Option[VersionedState[S]]]
@@ -52,44 +72,6 @@ trait StateCache[S]:
 
 trait StateCacheFactory:
   def create[S, E](info: StateInfo[S, E]): StateCache[S]
-
-object DefaultStateProviderFactory {
-  import java.util.concurrent.TimeUnit
-  import scala.concurrent.duration.Duration
-
-  def apply(eventReader: EventReader, cacheFactory: CacheFactory, ttlMillis: Long): StateProviderFactory =
-    CachedStateProviderFactory(
-      EventReaderStateProviderFactory(eventReader),
-      ScalaCacheFactory(cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
-    ).memoise
-}
-
-class CachedStateProviderFactory(
-  originalFactory: StateProviderFactory,
-  cacheFactory: StateCacheFactory
-) extends StateProviderFactory {
-  import cats.implicits.*
-
-  override def create[S, E](info: StateInfo[S, E]): StateProvider[S] = {
-    val stateCache = cacheFactory.create(info)
-    val original   = originalFactory.create(info)
-
-    new StateProvider[S]:
-      override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] =
-        for
-          o <- stateCache.get(id)
-          v <- original.load(id, o.orElse(prevState)) // TODO: choose one with a larger version
-          _ <- stateCache.set(id, v)
-        yield v
-
-      override def afterWrite(id: AggId, prevState: VersionedState[S], responses: Seq[EventRecord]): IO[Unit] =
-        info.nextState(Some(prevState), Stream(responses.map(r => VersionedEvent(r.version, r.event))*))
-          >>= { stateCache.set(id, _) }
-  }
-}
-
-import scalacache.*
-import scala.concurrent.duration.Duration
 
 trait CacheFactory:
   def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]]

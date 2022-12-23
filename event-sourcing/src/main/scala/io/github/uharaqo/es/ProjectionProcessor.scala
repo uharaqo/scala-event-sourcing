@@ -6,7 +6,8 @@ import cats.implicits.*
 
 import scala.concurrent.duration.FiniteDuration
 
-type ProjectionProcessor[T] = (EventRecord, T) => IO[T]
+trait ProjectionProcessor[T]:
+  def apply(event: EventRecord, previous: T): IO[T]
 
 object ProjectionProcessor {
   import io.github.uharaqo.es.ProjectionException.*
@@ -22,11 +23,10 @@ object ProjectionProcessor {
     retryInterval: FiniteDuration,
   ): ProjectionProcessor[T] = { (event, prev) =>
 
-    val deserialize = { (event: EventRecord) =>
+    val deserialize = (event: EventRecord) =>
       deserializer(event.event)
         .map(e => ProjectionEvent(event.id, event.version, event.timestamp, e))
-        .recoverWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t)))
-    }
+        .handleErrorWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t.some)))
 
     lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[T] = { (event, retryInterval, remainingRetry) =>
       projection(event) >>= {
@@ -40,11 +40,11 @@ object ProjectionProcessor {
                 Logger[IO].warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
                   >> IO.sleep(retryInterval)
                   >> handle(event, retryInterval * 2, remainingRetry - 1)
-              else IO.raiseError(UnrecoverableException("Projection retry failure", err))
+              else IO.raiseError(UnrecoverableException("Projection retry failure", err.some))
             case _: UnrecoverableException =>
               IO.raiseError(err)
             case _: Throwable =>
-              IO.raiseError(UnrecoverableException("Unhandled projection error", err))
+              IO.raiseError(UnrecoverableException("Unhandled projection error", err.some))
       }
     }
 

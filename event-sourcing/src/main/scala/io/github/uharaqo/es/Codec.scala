@@ -2,9 +2,10 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
-type Serializer[T]   = T => IO[Bytes]
-type Deserializer[T] = Bytes => IO[T]
+trait Serializer[A]:
+  def apply(v: A): IO[Bytes]
 
-trait Codec[T]:
-  val serializer: Serializer[T]
-  val deserializer: Deserializer[T]
+trait Deserializer[A]:
+  def apply(bytes: Bytes): IO[A]
+
+trait Codec[A] extends Serializer[A] with Deserializer[A]

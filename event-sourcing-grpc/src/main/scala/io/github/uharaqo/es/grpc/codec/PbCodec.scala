@@ -6,9 +6,12 @@ import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 import scalapb.TypeMapper
 
 object PbCodec {
-  def apply[T <: GeneratedMessage](using cmp: GeneratedMessageCompanion[T]) = new Codec[T] {
-    override val serializer: Serializer[T]     = PbSerializer[T]
-    override val deserializer: Deserializer[T] = PbDeserializer[T]
+  def apply[A <: GeneratedMessage](using cmp: GeneratedMessageCompanion[A]) = new Codec[A] {
+    val serializer: Serializer[A]     = PbSerializer[A]
+    val deserializer: Deserializer[A] = PbDeserializer[A]
+
+    override def apply(v: A): IO[Bytes]     = serializer(v)
+    override def apply(bytes: Bytes): IO[A] = deserializer(bytes)
   }
 
   class PbSerializer[A <: GeneratedMessage] extends Serializer[A]:

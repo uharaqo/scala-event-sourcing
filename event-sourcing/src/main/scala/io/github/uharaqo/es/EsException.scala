@@ -10,20 +10,13 @@ object EsException:
 
   case class EventStoreFailure(t: Throwable) extends EsException("Failed to store event", t.some)
 
-  case class EventStoreConflict() extends EsException("Failed to store event due to conflict", none)
+  case class EventStoreConflict(name: AggName) extends EsException("Failed to store event due to conflict: $name", none)
 
   case class EventLoadFailure(t: Throwable) extends EsException("Failed to load event", t.some)
 
   case class CommandAlreadyRegistered(fqcn: Fqcn) extends EsException(s"Command already registered: $fqcn", none)
 
-  case class CommandHandlerFailure(t: Throwable) extends EsException(s"Command handler failure", t.some)
+  case class CommandHandlerFailure(name: AggName, t: Throwable)
+      extends EsException(s"Command handler failure: $name", t.some)
 
   case object UnexpectedException extends EsException(s"Unexpected Exception", none)
-
-sealed class ProjectionException protected (message: String, cause: Throwable) extends Exception(message, cause)
-
-object ProjectionException:
-  case class UnrecoverableException(message: String, cause: Throwable) extends ProjectionException(message, cause):
-    def this(message: String) = this(message, null: Throwable)
-  case class TemporaryException(message: String, cause: Throwable) extends ProjectionException(message, cause):
-    def this(message: String) = this(message, null: Throwable)
