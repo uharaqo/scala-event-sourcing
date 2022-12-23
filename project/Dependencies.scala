@@ -52,7 +52,7 @@ object Dependencies {
     Seq(
       "org.scalameta" %% "munit"               % "0.7.29" % Test,
       "org.typelevel" %% "munit-cats-effect-3" % "1.0.7"  % Test,
-      "org.slf4j"      % "slf4j-api"           % "2.0.5",
-      "ch.qos.logback" % "logback-classic"     % "1.4.5",
+      "org.slf4j"      % "slf4j-api"           % "2.0.5"  % Test,
+      "ch.qos.logback" % "logback-classic"     % "1.4.5"  % Test,
     )
 }
