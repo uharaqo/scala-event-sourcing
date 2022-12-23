@@ -6,20 +6,23 @@ import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
 import io.github.uharaqo.es.grpc.server.save
 import io.github.uharaqo.es.proto.example.*
+import io.github.uharaqo.es.example.UserResource.Dependencies
 
 object UserResource {
 
   type UserCommandHandler = PartialCommandHandler[User, UserCommand, UserEventMessage]
-  implicit val eMapper: UserEvent => UserEventMessage     = PbCodec.toPbMessage
-  implicit val cMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
+  implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
+  implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
-  val stateInfo = StateInfo(
-    "user",
-    User.EMPTY,
-    PbCodec[UserEventMessage],
-    eventHandler,
-  )
-  val commandInfo = (deps: Dependencies) =>
+  lazy val stateInfo =
+    StateInfo(
+      "user",
+      User.EMPTY,
+      PbCodec[UserEventMessage],
+      eventHandler,
+    )
+
+  lazy val commandInfo = (deps: Dependencies) =>
     CommandInfo(
       UserCommandMessage.scalaDescriptor.fullName,
       PbCodec[UserCommandMessage],

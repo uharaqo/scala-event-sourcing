@@ -15,17 +15,28 @@ case class CommandInfo[S, C, E](
   handler: CommandHandler[S, C, E],
 )
 
-trait CommandProcessorEnv {
-
-  /** to access states that are not managed by the aggregate */
-  val stateLoaderFactory: StateLoaderFactory
-  val eventWriter: EventWriter
-}
-
-/** Facade to process a command. Looks up a processor and dispatch a command */
+/** facade to process a command. Looks up a processor and dispatch a command */
 type CommandProcessor = CommandInput => IO[EventRecords]
 
-type PartialCommandProcessor = CommandProcessorEnv => PartialFunction[CommandInput, IO[EventRecords]]
+/** standalone CommandProcessor that handles some of the CommandInputs */
+type PartialCommandProcessor = PartialFunction[CommandInput, IO[EventRecords]]
 
+/** create a command handler from a CommandInput */
 type CommandInputParser[S, C, E] =
-  PartialFunction[CommandInput, IO[(S, CommandHandlerContext[S, E]) => IO[EventRecords]]]
+  PartialFunction[CommandInput, IO[CommandHandlerContext[S, E] => IO[EventRecords]]]
+
+/** provide context for a command handler */
+type CommandHandlerContextProvider[S, E] = AggId => IO[CommandHandlerContext[S, E]]
+
+/** invoked on success */
+type CommandHandlerCallback[S, E] = (CommandHandlerContext[S, E], EventRecords) => IO[Unit]
+
+/** dependencies used to load states and write events */
+trait CommandProcessorEnv {
+
+  /** write events into a DB */
+  val eventRepository: EventRepository
+
+  /** access states that are not managed by the aggregate */
+  val stateLoaderFactory: StateLoaderFactory
+}

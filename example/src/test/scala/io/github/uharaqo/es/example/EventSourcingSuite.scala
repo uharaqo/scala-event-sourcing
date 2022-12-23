@@ -23,21 +23,21 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
-  import EventSourcingSuite.*
 
   private val user1 = "user1"
   private val user2 = "user2"
 
   test("user aggregate") {
-    val test1 = { (xa: Transactor[IO]) =>
-      val setup  = UserResourceSetup(xa)
-      val tester = setup.tester
+
+    val test1 = { (setup: TestSetup) =>
       import UserResource.*
+      val tester = setup.newTester(stateInfo, commandMapper)
       import tester.*
 
       for {
-        _ <- setup.projection.start
+        _ <- new UserResourceSetup(setup.xa, setup.env).projection.start
         _ <- Resource.eval(IO.sleep(1 seconds))
+
         _ <- Resource.eval(for {
           _ <- send(user1, RegisterUser("Alice"))
             .events(UserRegistered("Alice"))
@@ -84,13 +84,12 @@ class EventSourcingSuite extends CatsEffectSuite {
       } yield ()
     }
 
-    val test2 = { (xa: Transactor[IO]) =>
+    val test2 = { (setup: TestSetup) =>
       val group1 = "g1"
       val name1  = "name1"
 
-      val setup  = GroupResourceSetup(xa)
-      val tester = setup.tester
       import GroupResource.*
+      val tester = setup.newTester(stateInfo, commandMapper)
       import tester.*
 
       Resource.eval(
@@ -115,31 +114,50 @@ class EventSourcingSuite extends CatsEffectSuite {
       )
     }
 
-    EventSourcingSuite.run(xa => test1(xa) >> test2(xa))
+    TestSetup.run(setup => test1(setup) >> test2(setup))
   }
 }
 
-object EventSourcingSuite {
+object TestSetup {
 
-  val cacheFactory = new CacheFactory {
-    override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
-      CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
-  }
+  val cacheFactory = ScalaCacheFactory(
+    new CacheFactory {
+      override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
+        CaffeineCache(Caffeine.newBuilder().maximumSize(10000L).build)
+    },
+    Some(Duration(86_400_000L, TimeUnit.MILLISECONDS))
+  )
 
-  def run(task: Transactor[IO] => Resource[IO, Unit]) =
+  def run(task: TestSetup => Resource[IO, Unit]) =
     (for
       xa <- H2TransactorFactory.create()
       // xa <- PostgresTransactorFactory.create()
       _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
-      _ <- task(xa)
+      _ <- task(new TestSetup(xa))
     yield ())
       .use(_ => IO(ExitCode.Success))
+}
 
-  def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, D](
+class TestSetup(val xa: Transactor[IO]) {
+
+  val env =
+    new CommandProcessorEnv {
+      override val eventRepository    = DoobieEventRepository(xa)
+      override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository.reader)
+    }
+
+  val processor =
+    CommandProcessor(
+      Seq(
+        UserResourceSetup(xa, env).commandProcessor,
+        GroupResourceSetup(xa, env).commandProcessor,
+      )
+    )
+
+  def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, C2](
     stateInfo: StateInfo[S, E],
-    processor: CommandProcessor,
-    stateLoaderFactory: StateLoaderFactory
+    commandMapper: C2 => C,
   ): CommandTester[S, C, E] =
     val commandFactory =
       (id: AggId, c: C) =>
@@ -151,37 +169,19 @@ object EventSourcingSuite {
             payload = p.value.toByteArray(),
           )
         }
-    CommandTester(stateInfo, commandFactory, processor, stateLoaderFactory)
+    CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)
 }
 
-class UserResourceSetup(xa: Transactor[IO]) {
+class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
   import UserResource.*
 
-  val ttlMillis = 86_400_000L
+  val deps = new Dependencies {}
 
-  val eventRepo = DoobieEventRepository(xa)
-  val dep       = new Dependencies {}
-
-  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
-  val localStateLoaderFactory =
-    debug(
-      CachedStateLoaderFactory(
-        defaultStateLoaderFactory,
-        ScalaCacheFactory(EventSourcingSuite.cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
-      )
-    )
+  val localStateLoaderFactory = debug(CachedStateLoaderFactory(env.stateLoaderFactory, TestSetup.cacheFactory))
   val localStateLoader = {
     import cats.effect.unsafe.implicits.*
     localStateLoaderFactory(stateInfo).unsafeRunSync() // blocking call during setup
   }
-
-  val env = new CommandProcessorEnv {
-    override val stateLoaderFactory = defaultStateLoaderFactory
-    override val eventWriter        = eventRepo.writer
-  }
-
-  val inputParser = CommandInputParser(commandInfo(dep))
-  val proc        = CommandProcessor(env, Seq(PartialCommandProcessor(inputParser, stateInfo, localStateLoader)))
 
   val projection =
     ScheduledProjection(
@@ -193,44 +193,38 @@ class UserResourceSetup(xa: Transactor[IO]) {
       ),
       ProjectionEvent("", 0L, 0, null),
       prev => EventQuery(stateInfo.name, prev.timestamp),
-      eventRepo,
+      env.eventRepository.asInstanceOf[ProjectionRepository],
       100 millis,
       100 millis,
     )
 
-  val tester: CommandTester[User, UserCommandMessage, UserEventMessage] =
-    EventSourcingSuite.newTester(stateInfo, proc, env.stateLoaderFactory)
+  val commandProcessor =
+    PartialCommandProcessor(
+      stateInfo,
+      commandInfo(deps),
+      localStateLoader,
+      env.stateLoaderFactory,
+      env.eventRepository.writer
+    )
 }
 
-class GroupResourceSetup(xa: Transactor[IO]) {
+class GroupResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
   import GroupResource.*
 
-  val ttlMillis = 86_400_000L
+  val deps = new Dependencies {}
 
-  val eventRepo = DoobieEventRepository(xa)
-  val dep       = new Dependencies {}
-
-  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
-  val localStateLoaderFactory =
-    debug(
-      CachedStateLoaderFactory(
-        defaultStateLoaderFactory,
-        ScalaCacheFactory(EventSourcingSuite.cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
-      )
-    )
+  val localStateLoaderFactory = debug(CachedStateLoaderFactory(env.stateLoaderFactory, TestSetup.cacheFactory))
   val localStateLoader = {
     import cats.effect.unsafe.implicits.*
     localStateLoaderFactory(stateInfo).unsafeRunSync() // blocking call during setup
   }
 
-  val env = new CommandProcessorEnv {
-    override val stateLoaderFactory = defaultStateLoaderFactory
-    override val eventWriter        = eventRepo.writer
-  }
-
-  val inputParser = CommandInputParser(commandInfo(dep))
-  val proc        = CommandProcessor(env, Seq(PartialCommandProcessor(inputParser, stateInfo, localStateLoader)))
-
-  val tester: CommandTester[Group, GroupCommandMessage, GroupEventMessage] =
-    EventSourcingSuite.newTester(stateInfo, proc, env.stateLoaderFactory)
+  val commandProcessor =
+    PartialCommandProcessor(
+      stateInfo,
+      commandInfo(deps),
+      localStateLoader,
+      env.stateLoaderFactory,
+      env.eventRepository.writer
+    )
 }

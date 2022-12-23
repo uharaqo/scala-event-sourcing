@@ -5,17 +5,16 @@ import cats.effect.IO
 class DefaultCommandHandlerContext[S, E](
   override val info: StateInfo[S, E],
   override val id: AggId,
-  override val prevVer: Version,
+  override val prevState: VersionedState[S],
   stateLoaderFactory: StateLoaderFactory,
 ) extends CommandHandlerContext[S, E] {
-
   import cats.implicits.*
 
   override def save(events: E*): IO[EventRecords] =
     events.zipWithIndex.traverse {
       case (e, i) =>
         info.eventCodec(e).map { e =>
-          EventRecord(info.name, id, prevVer + i + 1, System.currentTimeMillis(), e)
+          EventRecord(info.name, id, prevState.version + i + 1, System.currentTimeMillis(), e)
         }
     }
 
@@ -25,7 +24,7 @@ class DefaultCommandHandlerContext[S, E](
     for
       stateLoader <- stateLoaderFactory(info)
       verS        <- stateLoader.load(id)
-      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS.version, stateLoaderFactory)
+      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS, stateLoaderFactory)
       ress <- handler(verS.state, ctx)
     yield ress
 }

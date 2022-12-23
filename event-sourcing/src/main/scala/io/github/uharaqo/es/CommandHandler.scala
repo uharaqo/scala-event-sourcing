@@ -9,7 +9,7 @@ trait CommandHandler[S, C, E]:
 trait CommandHandlerContext[S, E]:
   val info: StateInfo[S, E]
   val id: AggId
-  val prevVer: Version
+  val prevState: VersionedState[S]
 
   def save(events: E*): IO[EventRecords]
 

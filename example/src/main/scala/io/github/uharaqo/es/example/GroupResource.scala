@@ -11,15 +11,16 @@ import io.github.uharaqo.es.proto.example.UserEvent.Empty
 object GroupResource {
 
   type GroupCommandHandler = PartialCommandHandler[Group, GroupCommand, GroupEventMessage]
-  implicit val eMapper: GroupEvent => GroupEventMessage     = PbCodec.toPbMessage(_)
-  implicit val cMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage(_)
+  implicit val eventMapper: GroupEvent => GroupEventMessage       = PbCodec.toPbMessage(_)
+  implicit val commandMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage(_)
 
-  val stateInfo = StateInfo(
-    "group",
-    Group.EMPTY,
-    PbCodec[GroupEventMessage],
-    eventHandler,
-  )
+  val stateInfo =
+    StateInfo(
+      "group",
+      Group.EMPTY,
+      PbCodec[GroupEventMessage],
+      eventHandler,
+    )
   val commandInfo = (deps: Dependencies) =>
     CommandInfo(
       GroupCommandMessage.scalaDescriptor.fullName,

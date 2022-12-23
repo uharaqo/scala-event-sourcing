@@ -3,37 +3,67 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 object CommandProcessor {
-  def apply(env: CommandProcessorEnv, processors: Seq[PartialCommandProcessor]): CommandProcessor = {
+
+  /** combine PartialCommandProcessors to create a single facade */
+  def apply(processors: Seq[PartialCommandProcessor]): CommandProcessor = {
     val f: PartialFunction[CommandInput, IO[EventRecords]] =
-      processors.foldLeft(PartialFunction.empty)((pf1, pf2) => pf2(env).orElse(pf1))
+      processors.foldLeft(PartialFunction.empty)((pf1, pf2) => pf2.orElse(pf1))
     input => f.applyOrElse(input, _ => IO.raiseError(EsException.InvalidCommand(input.name)))
   }
 }
 
 object PartialCommandProcessor {
+  import cats.implicits.*
+
+  def apply[S, C, E](
+    stateInfo: StateInfo[S, E],
+    commandInfo: CommandInfo[S, C, E],
+    stateLoader: StateLoader[S],
+    stateLoaderFactory: StateLoaderFactory,
+    eventWriter: EventWriter
+  ): PartialCommandProcessor = {
+    val inputParser = CommandInputParser(commandInfo)
+
+    val contextFactory: (AggId, VersionedState[S]) => CommandHandlerContext[S, E] =
+      (id, prevState) => new DefaultCommandHandlerContext(stateInfo, id, prevState, stateLoaderFactory)
+
+    val contextProvider: CommandHandlerContextProvider[S, E] = id =>
+      stateLoader.load(id).map(prevState => contextFactory(id, prevState))
+
+    val onSuccess: CommandHandlerCallback[S, E] = (ctx, records) =>
+      stateLoader.onSuccess(ctx.id, ctx.prevState, records)
+
+    PartialCommandProcessor(inputParser, contextProvider, eventWriter, onSuccess)
+  }
+
   def apply[S, C, E](
     inputParser: CommandInputParser[S, C, E],
-    stateInfo: StateInfo[S, E],
-    stateLoader: StateLoader[S]
-  ): PartialCommandProcessor = env =>
+    contextProvider: CommandHandlerContextProvider[S, E],
+    eventWriter: EventWriter,
+    onSuccess: CommandHandlerCallback[S, E],
+  ): PartialCommandProcessor =
+    import EsException.*
+
     new PartialFunction[CommandInput, IO[EventRecords]] {
       override def isDefinedAt(input: CommandInput): Boolean = inputParser.isDefinedAt(input)
       override def apply(input: CommandInput): IO[EventRecords] =
         val id = input.info.id
         for
+          // create a command handler from the input
           handler <- inputParser(input)
 
-          prevState <- stateLoader.load(id)
+          // recover the latest state by loading events
+          ctx <- contextProvider(id)
 
-          ctx = new DefaultCommandHandlerContext(stateInfo, id, prevState.version, env.stateLoaderFactory)
-          records <-
-            handler(prevState.state, ctx)
-              .handleErrorWith(t => IO.raiseError(EsException.CommandHandlerFailure(t)))
+          // invoke the hanlder
+          records <- handler(ctx).handleErrorWith(t => IO.raiseError(CommandHandlerFailure(ctx.info.name, t)))
 
-          success <- env.eventWriter(records)
-          _       <- if !success then IO.raiseError(EsException.EventStoreConflict()) else IO.unit
+          // write the output events
+          success <- eventWriter(records)
+          _       <- if !success then IO.raiseError(EventStoreConflict(ctx.info.name)) else IO.unit
 
-          _ <- stateLoader.afterWrite(id, prevState, records)
+          // callbacks
+          - <- onSuccess(ctx, records)
         yield records
     }
 }
@@ -42,8 +72,8 @@ object CommandInputParser {
   def apply[S, C, E](commandInfo: CommandInfo[S, C, E]): CommandInputParser[S, CommandInput, E] =
     new CommandInputParser[S, CommandInput, E] {
       override def isDefinedAt(input: CommandInput): Boolean = commandInfo.fqcn == input.name
-      override def apply(input: CommandInput): IO[(S, CommandHandlerContext[S, E]) => IO[EventRecords]] =
+      override def apply(input: CommandInput): IO[CommandHandlerContext[S, E] => IO[EventRecords]] =
         for command <- commandInfo.deserializer(input.payload)
-        yield (s, ctx) => commandInfo.handler(s, command, ctx)
+        yield ctx => commandInfo.handler(ctx.prevState.state, command, ctx)
     }
 }

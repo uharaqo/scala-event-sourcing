@@ -1,16 +1,22 @@
 package io.github.uharaqo.es.example.grpc
 
-import cats.effect.{ExitCode, IO, IOApp, Resource}
+import cats.effect.ExitCode
+import cats.effect.IO
+import cats.effect.IOApp
+import cats.effect.Resource
+import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.example.*
 import io.github.uharaqo.es.grpc.server.GrpcServer
-import io.github.uharaqo.es.impl.repository.{DoobieEventRepository, H2TransactorFactory}
+import io.github.uharaqo.es.impl.repository.DoobieEventRepository
+import io.github.uharaqo.es.impl.repository.H2TransactorFactory
 import io.github.uharaqo.es.proto.eventsourcing.*
 import io.github.uharaqo.es.proto.example.*
-import doobie.util.transactor.Transactor
-import io.grpc.{Metadata, Status}
-import scala.concurrent.duration.Duration
+import io.grpc.Metadata
+import io.grpc.Status
+
 import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.Duration
 
 object Server extends IOApp {
 
@@ -35,7 +41,6 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   import scalacache.AbstractCache
   import scalacache.caffeine.CaffeineCache
 
-  private val eventRepo = DoobieEventRepository(xa)
   private val cacheFactory =
     new CacheFactory {
       override def create[S, E](info: StateInfo[S, E]): AbstractCache[IO, AggId, VersionedState[S]] =
@@ -43,41 +48,44 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     }
   private val ttlMillis = 86_400_000L
   private val env = new CommandProcessorEnv {
-    override val stateLoaderFactory = defaultStateLoaderFactory
-    override val eventWriter        = eventRepo.writer
+    override val eventRepository    = DoobieEventRepository(xa)
+    override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository.reader)
   }
   private val userDeps  = new UserResource.Dependencies {}
   private val groupDeps = new GroupResource.Dependencies {}
 
-  val defaultStateLoaderFactory = EventReaderStateLoaderFactory(eventRepo.reader)
-  val localStateLoaderFactory =
+  private val localStateLoaderFactory =
     debug(
       CachedStateLoaderFactory(
-        defaultStateLoaderFactory,
+        env.stateLoaderFactory,
         ScalaCacheFactory(cacheFactory, Some(Duration(ttlMillis, TimeUnit.MILLISECONDS)))
       )
     )
-  val userStateLoader = {
+  private val userStateLoader = {
     import cats.effect.unsafe.implicits.*
     localStateLoaderFactory(UserResource.stateInfo).unsafeRunSync() // blocking call during setup
   }
-  val groupStateLoader = {
+  private val groupStateLoader = {
     import cats.effect.unsafe.implicits.*
     localStateLoaderFactory(GroupResource.stateInfo).unsafeRunSync() // blocking call during setup
   }
   private val processors = Seq(
     PartialCommandProcessor(
-      CommandInputParser(UserResource.commandInfo(userDeps)),
       UserResource.stateInfo,
-      userStateLoader
+      UserResource.commandInfo(userDeps),
+      userStateLoader,
+      env.stateLoaderFactory,
+      env.eventRepository.writer,
     ),
     PartialCommandProcessor(
-      CommandInputParser(GroupResource.commandInfo(groupDeps)),
       GroupResource.stateInfo,
-      groupStateLoader
+      GroupResource.commandInfo(groupDeps),
+      groupStateLoader,
+      env.stateLoaderFactory,
+      env.eventRepository.writer,
     ),
   )
-  private val processor = CommandProcessor(env, processors)
+  private val processor = CommandProcessor(processors)
 
   private val parser: SendCommandRequest => IO[CommandInput] = { req =>
     IO {
