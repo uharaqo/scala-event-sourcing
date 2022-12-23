@@ -2,8 +2,8 @@ package io.github.uharaqo.es.example.grpc
 
 import cats.effect.{ExitCode, IO, IOApp}
 import io.github.uharaqo.es.grpc.client.CommandHandlerClient
-import io.github.uharaqo.es.proto.eventsourcing.SendCommandRequest
-import io.github.uharaqo.es.proto.example.{RegisterUser, UserCommand, UserCommandMessage}
+import io.github.uharaqo.es.grpc.proto.*
+import io.github.uharaqo.es.example.proto.*
 import com.google.protobuf.any.Any
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder
 

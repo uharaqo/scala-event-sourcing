@@ -1,4 +1,4 @@
-package io.github.uharaqo.es.impl.codec
+package io.github.uharaqo.es.codec
 
 import cats.effect.IO
 import io.github.uharaqo.es.*

@@ -20,5 +20,5 @@ object PbCodec {
   class PbDeserializer[A <: GeneratedMessage](using cmp: GeneratedMessageCompanion[A]) extends Deserializer[A]:
     override def convert(bytes: Bytes): IO[A] = IO(cmp.parseFrom(bytes))
 
-  def toPbMessage[M, T](content: T)(using mapper: TypeMapper[M, T]) = mapper.toBase(content)
+  def toPbMessage[M, A](content: A)(using mapper: TypeMapper[M, A]) = mapper.toBase(content)
 }

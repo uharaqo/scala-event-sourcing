@@ -2,7 +2,6 @@ package io.github.uharaqo.es.example
 
 import cats.effect.*
 import cats.implicits.*
-import com.github.plokhotnyuk.jsoniter_scala.core.*
 import io.github.uharaqo.es.*
 import munit.Assertions.*
 import scalapb.GeneratedMessage
@@ -16,13 +15,13 @@ class CommandTester[S, C, E](
   stateLoaderFactory: StateLoaderFactory,
 ) {
 
-  def send(aggId: AggId, command: C): IO[EventRecords] =
-    commandInputFactory(aggId, command) >>= send
+  def command(aggId: AggId, c: C): IO[EventRecords] =
+    commandInputFactory(aggId, c) >>= command
 
-  def send[CS](aggId: AggId, command: CS)(implicit mapper: CS => C): IO[EventRecords] =
-    send(aggId, mapper(command))
+  def command[CS](aggId: AggId, c: CS)(implicit mapper: CS => C): IO[EventRecords] =
+    command(aggId, mapper(c))
 
-  def send(input: CommandInput): IO[EventRecords] =
+  def command(input: CommandInput): IO[EventRecords] =
     processor(input).map(_.records)
 
   extension (io: IO[EventRecords]) {

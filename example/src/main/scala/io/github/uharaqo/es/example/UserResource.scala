@@ -5,7 +5,7 @@ import cats.implicits.*
 import io.github.uharaqo.es.*
 import io.github.uharaqo.es.grpc.codec.PbCodec
 import io.github.uharaqo.es.grpc.server.save
-import io.github.uharaqo.es.proto.example.*
+import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.example.UserResource.Dependencies
 
 object UserResource {

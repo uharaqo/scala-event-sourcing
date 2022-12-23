@@ -23,7 +23,7 @@ val baseSettings =
     scalaVersion      := "3.2.1",
     scalacOptions     := options,
     scalafmtOnCompile := true,
-    libraryDependencies ++= commonDeps ++ testDeps,
+    libraryDependencies ++= testDeps,
     run / fork               := true,
     Test / publishArtifact   := false,
     Test / parallelExecution := false,
@@ -31,22 +31,53 @@ val baseSettings =
     sonatypeRepository       := "https://s01.oss.sonatype.org/service/local",
   )
 
+val root =
+  (project in file("."))
+    .settings(publish / skip := true)
+    .aggregate(
+      eventSourcing,
+      eventSourcingPostgres,
+      eventSourcingJson,
+      eventSourcingProtobuf,
+      eventSourcingGrpc,
+      example
+    )
+
 lazy val eventSourcing =
   (project in file("event-sourcing"))
     .settings(baseSettings)
     .settings(
       name := "event-sourcing",
       libraryDependencies ++=
-        fs2Deps ++ serializerDeps ++ cacheDeps
+        fs2Deps ++ cacheDeps
     )
 
-lazy val eventSourcingDoobie =
-  (project in file("event-sourcing-doobie"))
+lazy val eventSourcingPostgres =
+  (project in file("event-sourcing-postgres"))
     .settings(baseSettings)
     .settings(
-      name := "event-sourcing-doobie",
-      libraryDependencies ++= doobieDeps
+      name := "event-sourcing-postgres",
+      libraryDependencies ++= postgresDeps
     )
+    .dependsOn(eventSourcing)
+
+lazy val eventSourcingJson =
+  (project in file("event-sourcing-json"))
+    .settings(baseSettings)
+    .settings(
+      name := "event-sourcing-json",
+      libraryDependencies ++= jsonDeps
+    )
+    .dependsOn(eventSourcing)
+
+lazy val eventSourcingProtobuf =
+  (project in file("event-sourcing-protobuf"))
+    .settings(baseSettings)
+    .settings(
+      name := "event-sourcing-protobuf",
+      libraryDependencies ++= protobufDeps
+    )
+    .enablePlugins(Fs2Grpc)
     .dependsOn(eventSourcing)
 
 lazy val eventSourcingGrpc =
@@ -54,19 +85,22 @@ lazy val eventSourcingGrpc =
     .settings(baseSettings)
     .settings(
       name := "event-sourcing-grpc",
-      libraryDependencies ++= grpcDeps
+      libraryDependencies ++= protobufDeps ++ grpcDeps,
+      scalapbCodeGeneratorOptions ++= Seq(
+        CodeGeneratorOption.FlatPackage,
+      )
     )
     .enablePlugins(Fs2Grpc)
-    .dependsOn(eventSourcing)
+    .dependsOn(eventSourcingProtobuf)
 
 lazy val exampleProto =
   (project in file("example-proto"))
     .settings(baseSettings)
     .settings(
       name := "example-proto",
+      libraryDependencies ++= protobufDeps,
       Compile / PB.targets :=
         Seq(scalapb.gen(flatPackage = true) -> (Compile / sourceManaged).value / "scalapb"),
-      libraryDependencies ++= protoDeps,
       publish / skip := true,
     )
 
@@ -74,13 +108,7 @@ lazy val example =
   (project in file("example"))
     .settings(baseSettings)
     .settings(
-      name := "example",
-      // libraryDependencies ++= serializerDeps ++ cacheDeps,
+      name           := "example",
       publish / skip := true,
     )
-    .dependsOn(eventSourcing, eventSourcingDoobie, eventSourcingGrpc, exampleProto)
-
-val root =
-  (project in file("."))
-    .settings(publish / skip := true)
-    .aggregate(eventSourcing, eventSourcingDoobie, eventSourcingGrpc, example)
+    .dependsOn(eventSourcing, eventSourcingPostgres, eventSourcingGrpc, exampleProto)

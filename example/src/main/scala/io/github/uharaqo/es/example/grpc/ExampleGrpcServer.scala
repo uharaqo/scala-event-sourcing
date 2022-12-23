@@ -10,8 +10,7 @@ import io.github.uharaqo.es.example.*
 import io.github.uharaqo.es.grpc.server.GrpcServer
 import io.github.uharaqo.es.repository.DoobieEventRepository
 import io.github.uharaqo.es.repository.H2TransactorFactory
-import io.github.uharaqo.es.proto.eventsourcing.*
-import io.github.uharaqo.es.proto.example.*
+import io.github.uharaqo.es.grpc.proto.*
 import io.grpc.Metadata
 import io.grpc.Status
 
