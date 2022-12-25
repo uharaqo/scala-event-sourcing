@@ -80,6 +80,9 @@ class EventSourcingSuite extends CatsEffectSuite {
               (user1, User("Alice", 100)),
               (user2, User("Bob", 10))
             )
+
+          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user1), stateInfo.eventCodec)
+          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user2), stateInfo.eventCodec)
         } yield ())
       } yield ()
     }
@@ -110,6 +113,8 @@ class EventSourcingSuite extends CatsEffectSuite {
 
           _ <- command(group1, AddUser("INVALID_USER"))
             .failsBecause("User not found")
+
+          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, group1), stateInfo.eventCodec)
         yield ()
       )
     }
@@ -131,7 +136,7 @@ object TestSetup {
   def run(task: TestSetup => Resource[IO, Unit]) =
     (for
       xa <- H2TransactorFactory.create()
-      // xa <- PostgresTransactorFactory.create()
+//      xa <- PostgresTransactorFactory.create()
       _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
       _ <- task(new TestSetup(xa))
@@ -157,7 +162,7 @@ class TestSetup(val xa: Transactor[IO]) {
 
   def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, C2](
     stateInfo: StateInfo[S, E],
-    commandMapper: C2 => C,
+    commandMapper: C2 => C, // just to infer the type C2
   ): CommandTester[S, C, E] =
     val commandFactory =
       (id: AggId, c: C) =>

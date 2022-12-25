@@ -75,7 +75,7 @@ lazy val eventSourcingProtobuf =
     .settings(baseSettings)
     .settings(
       name := "event-sourcing-protobuf",
-      libraryDependencies ++= protobufDeps
+      libraryDependencies ++= protobufDeps :+ Dependencies.protobufJsonDep % "provided"
     )
     .enablePlugins(Fs2Grpc)
     .dependsOn(eventSourcing)
@@ -109,6 +109,7 @@ lazy val example =
     .settings(baseSettings)
     .settings(
       name           := "example",
+      libraryDependencies += Dependencies.protobufJsonDep,
       publish / skip := true,
     )
     .dependsOn(eventSourcing, eventSourcingPostgres, eventSourcingGrpc, exampleProto)

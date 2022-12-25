@@ -3,7 +3,7 @@ import sbt.*
 object Dependencies {
   val fs2Version        = "3.4.0"
   val doobieVersion     = "1.0.0-RC2"
-  val jsoniterVersion   = "2.18.1"
+  val jsoniterVersion   = "2.19.1"
   val scalaPbVersion    = "0.11.12"
   val scalaCacheVersion = "1.0.0-M6"
 
@@ -40,8 +40,10 @@ object Dependencies {
   lazy val protobufDeps =
     Seq(
       "com.thesamet.scalapb" %% "compilerplugin"  % scalaPbVersion,
-      "com.thesamet.scalapb" %% "scalapb-runtime" % scalaPbVersion % "protobuf"
-    )
+      "com.thesamet.scalapb" %% "scalapb-runtime" % scalaPbVersion % "protobuf",
+  )
+
+  lazy val protobufJsonDep = "com.thesamet.scalapb" %% "scalapb-json4s" % "0.12.0"
 
   lazy val grpcDeps =
     Seq(

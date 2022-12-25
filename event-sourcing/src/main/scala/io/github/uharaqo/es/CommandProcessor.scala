@@ -13,7 +13,7 @@ case class CommandOutput(records: EventRecords) {
 case class CommandInfo[S, C, E](
   fqcn: Fqcn,
   deserializer: Deserializer[C],
-  handler: CommandHandler[S, C, E],
+  commandHandler: CommandHandler[S, C, E],
 )
 
 /** facade to process a command. Looks up a processor and dispatch a command */

@@ -7,7 +7,7 @@ extension (reader: EventReader) {
   def dump[E](aggInfo: AggInfo, eventDeserializer: Deserializer[E]) =
     reader
       .load(aggInfo, 0)
-      .through(_.map(ve => eventDeserializer.convert(ve.event).map(v => println(s"${ve.version}: $v"))))
+      .through(_.map(ve => eventDeserializer.convert(ve.event).map(v => println(s"[$aggInfo] ${ve.version}: $v"))))
       .compile
       .toList
       .flatMap(_.sequence)
