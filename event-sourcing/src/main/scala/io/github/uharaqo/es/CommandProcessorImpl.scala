@@ -8,7 +8,7 @@ object CommandProcessor {
   def apply(processors: Seq[PartialCommandProcessor]): CommandProcessor = {
     val f: PartialFunction[CommandInput, IO[EventRecords]] =
       processors.foldLeft(PartialFunction.empty)((pf1, pf2) => pf2.orElse(pf1))
-    input => f.applyOrElse(input, _ => IO.raiseError(EsException.InvalidCommand(input.name))).map(CommandOutput(_))
+    input => f.applyOrElse(input, _ => IO.raiseError(EsException.InvalidCommand(input.name))).map(CommandOutput.apply)
   }
 }
 
@@ -74,6 +74,6 @@ object CommandInputParser {
       override def isDefinedAt(input: CommandInput): Boolean = commandInfo.fqcn == input.name
       override def apply(input: CommandInput): IO[CommandHandlerContext[S, E] => IO[EventRecords]] =
         for command <- commandInfo.deserializer.convert(input.payload)
-        yield ctx => commandInfo.handler(ctx.prevState.state, command, ctx)
+        yield ctx => commandInfo.commandHandler(ctx.prevState.state, command, ctx)
     }
 }

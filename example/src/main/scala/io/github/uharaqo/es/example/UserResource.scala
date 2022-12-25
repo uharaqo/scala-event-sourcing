@@ -3,10 +3,10 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.grpc.codec.PbCodec
-import io.github.uharaqo.es.grpc.server.save
-import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.example.UserResource.Dependencies
+import io.github.uharaqo.es.example.proto.*
+import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
+import io.github.uharaqo.es.grpc.server.save
 
 object UserResource {
 
@@ -14,18 +14,16 @@ object UserResource {
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
-  lazy val stateInfo =
-    StateInfo(
-      "user",
-      User.EMPTY,
-      PbCodec[UserEventMessage],
-      eventHandler,
-    )
+  implicit val eventCodec: Codec[UserEventMessage] =
+    JsonCodec[UserEventMessage]
+//    PbCodec[UserEventMessage]
+
+  lazy val stateInfo = StateInfo("user", User.EMPTY, eventCodec, eventHandler)
 
   lazy val commandInfo = (deps: Dependencies) =>
     CommandInfo(
-      UserCommandMessage.scalaDescriptor.fullName,
-      PbCodec[UserCommandMessage],
+      fqcn = UserCommandMessage.scalaDescriptor.fullName,
+      deserializer = PbCodec[UserCommandMessage],
       debug(commandHandler(deps))
     )
 

@@ -3,7 +3,7 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.grpc.codec.PbCodec
+import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
 import io.github.uharaqo.es.grpc.server.save
 import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.example.proto.UserEvent.Empty
@@ -11,16 +11,15 @@ import io.github.uharaqo.es.example.proto.UserEvent.Empty
 object GroupResource {
 
   type GroupCommandHandler = PartialCommandHandler[Group, GroupCommand, GroupEventMessage]
-  implicit val eventMapper: GroupEvent => GroupEventMessage       = PbCodec.toPbMessage(_)
-  implicit val commandMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage(_)
+  implicit val eventMapper: GroupEvent => GroupEventMessage       = PbCodec.toPbMessage
+  implicit val commandMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage
 
-  val stateInfo =
-    StateInfo(
-      "group",
-      Group.EMPTY,
-      PbCodec[GroupEventMessage],
-      eventHandler,
-    )
+  implicit val eventCodec: Codec[GroupEventMessage] =
+    JsonCodec[GroupEventMessage]
+//      PbCodec[GroupEventMessage]
+
+  val stateInfo = StateInfo("group", Group.EMPTY, eventCodec, eventHandler)
+
   val commandInfo = (deps: Dependencies) =>
     CommandInfo(
       GroupCommandMessage.scalaDescriptor.fullName,
