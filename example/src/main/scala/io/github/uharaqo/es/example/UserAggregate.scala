@@ -3,12 +3,12 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.example.UserResource.Dependencies
+import io.github.uharaqo.es.example.UserAggregate.Dependencies
 import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
 import io.github.uharaqo.es.grpc.server.save
 
-object UserResource {
+object UserAggregate {
 
   type UserCommandHandler = PartialCommandHandler[User, UserCommand, UserEventMessage]
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
