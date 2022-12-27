@@ -60,7 +60,7 @@ object ScheduledProjection {
     processor: ProjectionProcessor[T],
     initialState: T,
     query: T => EventQuery,
-    repo: ProjectionRepository,
+    repo: EventRepository,
     loadInterval: FiniteDuration,
     pollingInterval: FiniteDuration,
   ): Resource[IO, Unit] = {

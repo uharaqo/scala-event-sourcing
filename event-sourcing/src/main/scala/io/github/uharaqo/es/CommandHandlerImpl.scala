@@ -18,15 +18,12 @@ class DefaultCommandHandlerContext[S, E](
         }
     }
 
-  override def withState[S2, E2](info: StateInfo[S2, E2], id: AggId)(
-    handler: (S2, CommandHandlerContext[S2, E2]) => IO[EventRecords]
-  ): IO[EventRecords] =
+  override def withState[S2, E2](info: StateInfo[S2, E2], id: AggId): IO[(S2, CommandHandlerContext[S2, E2])] =
     for
       stateLoader <- stateLoaderFactory(info)
       verS        <- stateLoader.load(id)
       ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS, stateLoaderFactory)
-      ress <- handler(verS.state, ctx)
-    yield ress
+    yield (verS.state, ctx)
 }
 
 type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]

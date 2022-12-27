@@ -11,7 +11,7 @@ type AggId   = String
 type EventRecords = Seq[EventRecord]
 
 case class AggInfo(name: AggName, id: AggId) {
-  override def toString: _root_.java.lang.String = s"$name/$id"
+  override def toString: String = s"$name/$id"
 }
 
 case class VersionedEvent(version: Version, event: Bytes)

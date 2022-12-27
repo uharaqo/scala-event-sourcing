@@ -76,7 +76,7 @@ object UserResource {
               val senderId = ctx.id
               for
                 sent <- ctx.save(PointSent(c.recipientId, c.point))
-                received <- ctx.withState(ctx.info, c.recipientId) { (s2, ctx2) =>
+                received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
                   if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
                   else ctx2.save(PointReceived(senderId, c.point))
                 }

@@ -81,8 +81,8 @@ class EventSourcingSuite extends CatsEffectSuite {
               (user2, User("Bob", 10))
             )
 
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user1), stateInfo.eventCodec)
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user2), stateInfo.eventCodec)
+          _ <- setup.dump(stateInfo, user1)
+          _ <- setup.dump(stateInfo, user2)
         } yield ())
       } yield ()
     }
@@ -114,7 +114,7 @@ class EventSourcingSuite extends CatsEffectSuite {
           _ <- command(group1, AddUser("INVALID_USER"))
             .failsBecause("User not found")
 
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, group1), stateInfo.eventCodec)
+          _ <- setup.dump(stateInfo, group1)
         yield ()
       )
     }
@@ -175,6 +175,13 @@ class TestSetup(val xa: Transactor[IO]) {
           )
         }
     CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)
+
+  def dump[S, E](stateInfo: StateInfo[S, E], id: AggId): IO[Unit] =
+    env.eventRepository
+      .loadEvents(stateInfo, id)
+      .evalMap((v, e) => IO.println(s"[${stateInfo.name}/${id}] ${v}: ${e}"))
+      .compile
+      .foldMonoid
 }
 
 class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
@@ -198,7 +205,7 @@ class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
       ),
       ProjectionEvent("", 0L, 0, null),
       prev => EventQuery(stateInfo.name, prev.timestamp),
-      env.eventRepository.asInstanceOf[ProjectionRepository],
+      env.eventRepository,
       100 millis,
       100 millis,
     )
