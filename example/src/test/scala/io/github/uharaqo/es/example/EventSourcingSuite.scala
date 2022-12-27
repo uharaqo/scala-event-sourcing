@@ -24,21 +24,25 @@ import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
 
-  private val user1 = "user1"
-  private val user2 = "user2"
+  private val user1  = "user1"
+  private val user2  = "user2"
+  private val group1 = "g1"
+  private val name1  = "name1"
 
   test("user aggregate") {
 
     val test1 = { (setup: TestSetup) =>
-      import UserResource.*
-      val tester = setup.newTester(stateInfo, commandMapper)
-      import tester.*
+      val userAggregateSetup  = new UserAggregateSetup(setup)
+      val groupAggregateSetup = new GroupAggregateSetup(setup)
+      val processors          = Seq(userAggregateSetup.commandProcessor, groupAggregateSetup.commandProcessor)
 
-      for {
-        _ <- new UserResourceSetup(setup.xa, setup.env).projection.start
-        _ <- Resource.eval(IO.sleep(1 seconds))
+      val userTester  = setup.newTester(UserAggregate.stateInfo, UserAggregate.commandMapper, processors)
+      val groupTester = setup.newTester(GroupAggregate.stateInfo, GroupAggregate.commandMapper, processors)
 
-        _ <- Resource.eval(for {
+      val userTest = {
+        import UserAggregate.*
+        import userTester.*
+        for {
           _ <- command(user1, RegisterUser("Alice"))
             .events(UserRegistered("Alice"))
             .states((user1, User("Alice", 0)))
@@ -46,30 +50,24 @@ class EventSourcingSuite extends CatsEffectSuite {
 
           _ <- command(user1, RegisterUser("Alice"))
             .failsBecause("Already registered")
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user1, AddPoint(30))
             .events(PointAdded(30))
             .states((user1, User("Alice", 30)))
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user1, AddPoint(80))
             .events(PointAdded(80))
             .states((user1, User("Alice", 110)))
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user2, RegisterUser("Bob"))
             .events(UserRegistered("Bob"))
             .states((user2, User("Bob", 0)))
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user1, SendPoint(user2, 9999))
             .failsBecause("Point Shortage")
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user1, SendPoint("INVALID_USER", 10))
             .failsBecause("User not found")
-          _ <- IO.sleep(100 millis)
 
           _ <- command(user1, SendPoint(user2, 10))
             .events(
@@ -81,21 +79,15 @@ class EventSourcingSuite extends CatsEffectSuite {
               (user2, User("Bob", 10))
             )
 
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user1), stateInfo.eventCodec)
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, user2), stateInfo.eventCodec)
-        } yield ())
-      } yield ()
-    }
+          _ <- setup.dump(stateInfo, user1)
+          _ <- setup.dump(stateInfo, user2)
+        } yield ()
+      }
 
-    val test2 = { (setup: TestSetup) =>
-      val group1 = "g1"
-      val name1  = "name1"
+      val groupTest = {
+        import GroupAggregate.*
+        import groupTester.*
 
-      import GroupResource.*
-      val tester = setup.newTester(stateInfo, commandMapper)
-      import tester.*
-
-      Resource.eval(
         for
           _ <- command(group1, CreateGroup("INVALID_USER", name1))
             .failsBecause("User not found")
@@ -114,12 +106,20 @@ class EventSourcingSuite extends CatsEffectSuite {
           _ <- command(group1, AddUser("INVALID_USER"))
             .failsBecause("User not found")
 
-          _ <- setup.env.eventRepository.dump(AggInfo(stateInfo.name, group1), stateInfo.eventCodec)
+          _ <- setup.dump(stateInfo, group1)
         yield ()
-      )
+      }
+
+      for {
+        _ <- userAggregateSetup.init()
+        _ <- Resource.eval(IO.sleep(100 millis))
+        _ <- Resource.eval(
+          userTest >> groupTest
+        )
+      } yield ()
     }
 
-    TestSetup.run(setup => test1(setup) >> test2(setup))
+    TestSetup.run(setup => test1(setup))
   }
 }
 
@@ -152,18 +152,12 @@ class TestSetup(val xa: Transactor[IO]) {
       override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
     }
 
-  val processor =
-    CommandProcessor(
-      Seq(
-        UserResourceSetup(xa, env).commandProcessor,
-        GroupResourceSetup(xa, env).commandProcessor,
-      )
-    )
-
   def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, C2](
     stateInfo: StateInfo[S, E],
-    commandMapper: C2 => C, // just to infer the type C2
+    commandMapper: C2 => C, // just to capture the type C2
+    processors: Seq[PartialCommandProcessor],
   ): CommandTester[S, C, E] =
+    val processor = CommandProcessor(processors)
     val commandFactory =
       (id: AggId, c: C) =>
         IO {
@@ -175,11 +169,19 @@ class TestSetup(val xa: Transactor[IO]) {
           )
         }
     CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)
+
+  def dump[S, E](stateInfo: StateInfo[S, E], id: AggId): IO[Unit] =
+    env.eventRepository
+      .loadEvents(stateInfo, id)
+      .evalMap((v, e) => IO.println(s"[${stateInfo.name}/${id}] ${v}: ${e}"))
+      .compile
+      .foldMonoid
 }
 
-class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
-  import UserResource.*
+class UserAggregateSetup(setup: TestSetup) {
+  import UserAggregate.*
 
+  val env  = setup.env
   val deps = new Dependencies {}
 
   val localStateLoaderFactory = debug(CachedStateLoaderFactory(env.stateLoaderFactory, TestSetup.cacheFactory))
@@ -198,9 +200,9 @@ class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
       ),
       ProjectionEvent("", 0L, 0, null),
       prev => EventQuery(stateInfo.name, prev.timestamp),
-      env.eventRepository.asInstanceOf[ProjectionRepository],
-      100 millis,
-      100 millis,
+      env.eventRepository,
+      10 millis,
+      10 millis,
     )
 
   val commandProcessor =
@@ -211,11 +213,17 @@ class UserResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
       env.stateLoaderFactory,
       env.eventRepository
     )
+
+  def init(): Resource[IO, Unit] =
+    for {
+      _ <- projection.start
+    } yield ()
 }
 
-class GroupResourceSetup(xa: Transactor[IO], env: CommandProcessorEnv) {
-  import GroupResource.*
+class GroupAggregateSetup(setup: TestSetup) {
+  import GroupAggregate.*
 
+  val env  = setup.env
   val deps = new Dependencies {}
 
   val localStateLoaderFactory = debug(CachedStateLoaderFactory(env.stateLoaderFactory, TestSetup.cacheFactory))

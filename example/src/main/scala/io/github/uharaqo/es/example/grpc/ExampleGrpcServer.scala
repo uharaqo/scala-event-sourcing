@@ -50,8 +50,8 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     override val eventRepository    = DoobieEventRepository(xa)
     override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
   }
-  private val userDeps  = new UserResource.Dependencies {}
-  private val groupDeps = new GroupResource.Dependencies {}
+  private val userDeps  = new UserAggregate.Dependencies {}
+  private val groupDeps = new GroupAggregate.Dependencies {}
 
   private val localStateLoaderFactory =
     debug(
@@ -62,23 +62,23 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     )
   private val userStateLoader = {
     import cats.effect.unsafe.implicits.*
-    localStateLoaderFactory(UserResource.stateInfo).unsafeRunSync() // blocking call during setup
+    localStateLoaderFactory(UserAggregate.stateInfo).unsafeRunSync() // blocking call during setup
   }
   private val groupStateLoader = {
     import cats.effect.unsafe.implicits.*
-    localStateLoaderFactory(GroupResource.stateInfo).unsafeRunSync() // blocking call during setup
+    localStateLoaderFactory(GroupAggregate.stateInfo).unsafeRunSync() // blocking call during setup
   }
   private val processors = Seq(
     PartialCommandProcessor(
-      UserResource.stateInfo,
-      UserResource.commandInfo(userDeps),
+      UserAggregate.stateInfo,
+      UserAggregate.commandInfo(userDeps),
       userStateLoader,
       env.stateLoaderFactory,
       env.eventRepository,
     ),
     PartialCommandProcessor(
-      GroupResource.stateInfo,
-      GroupResource.commandInfo(groupDeps),
+      GroupAggregate.stateInfo,
+      GroupAggregate.commandInfo(groupDeps),
       groupStateLoader,
       env.stateLoaderFactory,
       env.eventRepository,

@@ -3,15 +3,6 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 import cats.implicits.*
-extension (reader: EventReader) {
-  def dump[E](aggInfo: AggInfo, eventDeserializer: Deserializer[E]) =
-    reader
-      .load(aggInfo, 0)
-      .through(_.map(ve => eventDeserializer.convert(ve.event).map(v => println(s"[$aggInfo] ${ve.version}: $v"))))
-      .compile
-      .toList
-      .flatMap(_.sequence)
-}
 
 def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
   (s, c, ctx) =>

@@ -5,7 +5,7 @@ import io.github.uharaqo.es.*
 import doobie.implicits.*
 import doobie.util.transactor.Transactor
 
-class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository with ProjectionRepository {
+class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository {
 
   import DoobieEventRepository.*
   import cats.implicits.*
