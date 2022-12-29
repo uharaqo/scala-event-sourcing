@@ -31,7 +31,7 @@ class EventReaderStateLoaderFactory(eventReader: EventReader) extends StateLoade
     IO.pure(
       new StateLoader[S] {
         override def load(id: AggId, prevState: Option[VersionedState[S]]): IO[VersionedState[S]] = {
-          val events = eventReader.load(AggInfo(info.name, id), prevState.map(_.version).getOrElse(0L))
+          val events = eventReader.queryById(info.name, id, prevState.map(_.version).getOrElse(0L))
           info.nextState(prevState, events)
         }
       }

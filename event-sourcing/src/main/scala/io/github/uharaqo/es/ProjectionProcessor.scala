@@ -70,7 +70,7 @@ object ScheduledProjection {
       ticker,
       prev =>
         repo
-          .load(query(prev))
+          .queryByName(query(prev))
           .evalMap(record => processor(record, prev))
           .compile
           .last
@@ -107,12 +107,12 @@ object ScheduledProjection {
         _ <- awaitAndRun(t, task, pollingInterval, initialState).background
       yield ()
 
-    private def awaitAndRun[T](t: Ticker, task: T => IO[T], pollingInterval: FiniteDuration, prevState: T): IO[?] =
-      t()
+    private def awaitAndRun[T](ticker: Ticker, task: T => IO[T], pollingInterval: FiniteDuration, prevState: T): IO[?] =
+      ticker()
         >>= {
           case Some(_) => task(prevState)
           case None    => IO.sleep(pollingInterval) >> prevState.pure
         }
-        >>= { last => awaitAndRun(t, task, pollingInterval, last) }
+        >>= { last => awaitAndRun(ticker, task, pollingInterval, last) }
   }
 }

@@ -10,10 +10,6 @@ type AggId   = String
 
 type EventRecords = Seq[EventRecord]
 
-case class AggInfo(name: AggName, id: AggId) {
-  override def toString: String = s"$name/$id"
-}
-
 case class VersionedEvent(version: Version, event: Bytes)
 
 case class VersionedState[S](version: Version, state: S)

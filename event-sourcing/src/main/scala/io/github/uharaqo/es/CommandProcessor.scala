@@ -3,7 +3,7 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 /** request that comes from outside this system */
-case class CommandInput(info: AggInfo, name: Fqcn, payload: Bytes)
+case class CommandInput(aggregate: AggName, id: AggId, command: Fqcn, payload: Bytes)
 
 case class CommandOutput(records: EventRecords) {
   def version: Option[Version] = records.lastOption.map(_.version)

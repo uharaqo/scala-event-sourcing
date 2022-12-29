@@ -19,6 +19,7 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository {
     Seq(CREATE_EVENTS_TABLE).traverse(_.update.run).transact(xa).void
 
   override def write(records: EventRecords) =
+    // PK: (name, id, ver) prevents conflicts
     Update[EventRecord](INSERT_EVENT)
       .updateMany(records)
       .transact(xa)
@@ -29,14 +30,14 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository {
       // Return true if all the records were applied or there was no record
       .map(z => z.map(_ == records.size).fold(b => true, b => b))
 
-  override def load(info: AggInfo, previousVersion: Version): Stream[IO, VersionedEvent] =
-    SELECT_EVENTS(info, previousVersion)
+  override def queryById(name: AggName, id: AggId, previousVersion: Version): Stream[IO, VersionedEvent] =
+    SELECT_EVENTS(name, id, previousVersion)
       .query[VersionedEvent]
       .stream
       .transact(xa)
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
 
-  override def load(query: EventQuery): Stream[IO, EventRecord] =
+  override def queryByName(query: EventQuery): Stream[IO, EventRecord] =
     SELECT_EVENTS_BY_RESOURCE(query.name, query.lastTimestamp).query[EventRecord].stream.transact(xa)
 }
 
@@ -54,8 +55,8 @@ object DoobieEventRepository {
 
   val INSERT_EVENT = "INSERT INTO events (name, id, ver, ts_ms, event) VALUES (?, ?, ?, ?, ?)"
   val SELECT_EVENTS =
-    (info: AggInfo, prevVer: Version) =>
-      sql"""SELECT ver, event FROM events WHERE name = ${info.name} AND id = ${info.id} AND ver > ${prevVer} ORDER BY ver"""
+    (name: AggName, id: AggId, prevVer: Version) =>
+      sql"""SELECT ver, event FROM events WHERE name = $name AND id = $id AND ver > $prevVer ORDER BY ver"""
   val SELECT_EVENTS_BY_RESOURCE =
     (name: AggName, timestampGt: TsMs) =>
       sql"""SELECT name, id, ver, ts_ms, event FROM events WHERE name = $name AND ts_ms > $timestampGt ORDER BY ts_ms"""

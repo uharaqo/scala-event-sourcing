@@ -29,7 +29,7 @@ class EventSourcingSuite extends CatsEffectSuite {
   private val group1 = "g1"
   private val name1  = "name1"
 
-  test("user aggregate") {
+  test("integration test") {
 
     val test1 = { (setup: TestSetup) =>
       val userAggregateSetup  = new UserAggregateSetup(setup)
@@ -163,9 +163,10 @@ class TestSetup(val xa: Transactor[IO]) {
         IO {
           val p = com.google.protobuf.any.Any.pack(c)
           CommandInput(
-            info = AggInfo(stateInfo.name, id),
-            name = p.typeUrl.split('/').last,
-            payload = p.value.toByteArray(),
+            stateInfo.name,
+            id,
+            p.typeUrl.split('/').last,
+            payload = p.value.toByteArray,
           )
         }
     CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)

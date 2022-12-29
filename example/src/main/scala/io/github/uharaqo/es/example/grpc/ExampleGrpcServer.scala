@@ -89,7 +89,7 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   private val parser: SendCommandRequest => IO[CommandInput] = { req =>
     IO {
       val p = req.payload.get
-      CommandInput(AggInfo(req.aggregate, req.id), p.typeUrl.split('/').last, p.value.toByteArray)
+      CommandInput(req.aggregate, req.id, p.typeUrl.split('/').last, p.value.toByteArray)
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))
   }
