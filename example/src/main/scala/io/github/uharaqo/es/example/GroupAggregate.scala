@@ -63,8 +63,8 @@ object GroupAggregate {
           case Group(ownerId, name, users) =>
             if users.contains(c.userId) then ctx.fail(IllegalStateException("Already a member"))
             else
-              ctx.withState(UserAggregate.stateInfo, c.userId) >>= { (s, ctx2) =>
-                if s == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
+              ctx.withState(UserAggregate.stateInfo, c.userId) >>= { (s2, ctx2) =>
+                if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
                 else ctx.save(UserAdded(c.userId))
               }
     }

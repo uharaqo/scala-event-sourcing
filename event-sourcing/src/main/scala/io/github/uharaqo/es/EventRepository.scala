@@ -18,22 +18,26 @@ trait EventWriter:
   def write(records: EventRecords): IO[Boolean] // TODO: just raise exception?
 
 trait EventReader:
-  /**
-   * Load all events that has a larger version than the [[previousVersion]].
-   * 
-   * @param name aggregate name
-   * @param id aggregate ID
-   * @param previousVersion the version kept in the process
-   * @return event stream
-   */
+  /** Load all events that has a larger version than the [[previousVersion]].
+    *
+    * @param name
+    *   aggregate name
+    * @param id
+    *   aggregate ID
+    * @param previousVersion
+    *   the version kept in the process
+    * @return
+    *   event stream
+    */
   def queryById(name: AggName, id: AggId, previousVersion: Version): Stream[IO, VersionedEvent]
 
-  /**
-   * Load all events that has a larger timestamp than the [[query.lastTimestamp]]
-   * 
-   * @param query aggregate name and timestamp
-   * @return event stream
-   */
+  /** Load all events that has a larger timestamp than the [[query.lastTimestamp]]
+    *
+    * @param query
+    *   aggregate name and timestamp
+    * @return
+    *   event stream
+    */
   def queryByName(query: EventQuery): Stream[IO, EventRecord]
 
 extension (reader: EventReader) {

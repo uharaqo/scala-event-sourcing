@@ -47,8 +47,9 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     }
   private val ttlMillis = 86_400_000L
   private val env = new CommandProcessorEnv {
-    override val eventRepository    = DoobieEventRepository(xa)
-    override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
+    override val eventRepository      = DoobieEventRepository(xa)
+    override val projectionRepository = eventRepository.asInstanceOf[DoobieEventRepository]
+    override val stateLoaderFactory   = EventReaderStateLoaderFactory(eventRepository)
   }
   private val userDeps  = new UserAggregate.Dependencies {}
   private val groupDeps = new GroupAggregate.Dependencies {}

@@ -38,6 +38,9 @@ trait CommandProcessorEnv {
   /** write events into a DB */
   val eventRepository: EventRepository
 
+  /** load events for projection */
+  val projectionRepository: ProjectionRepository
+
   /** access states that are not managed by the aggregate */
   val stateLoaderFactory: StateLoaderFactory
 }
