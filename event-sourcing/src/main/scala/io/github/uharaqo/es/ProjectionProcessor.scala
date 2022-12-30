@@ -5,40 +5,41 @@ import cats.effect.{IO, Resource, Sync}
 import cats.implicits.*
 
 import scala.concurrent.duration.FiniteDuration
+import cats.data.OptionT
 
-trait ProjectionProcessor[T]:
-  def apply(event: EventRecord, previous: T): IO[T]
+trait ProjectionProcessor:
+  def apply(event: EventRecord): IO[TsMs]
 
 object ProjectionProcessor {
   import io.github.uharaqo.es.ProjectionException.*
   import org.typelevel.log4cats.Logger
   import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-  implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
+  implicit def logger: Logger[IO] = Slf4jLogger.getLogger[IO]
 
-  def apply[E, T](
-    deserializer: Deserializer[E],
-    projection: Projection[E, T],
+  def apply[E](
+    stateInfo: StateInfo[?, E],
+    projection: Projection[E],
     maxRetry: Int,
     retryInterval: FiniteDuration,
-  ): ProjectionProcessor[T] = { (event, prev) =>
+  ): ProjectionProcessor = { event =>
 
     val deserialize = (event: EventRecord) =>
-      deserializer
+      stateInfo.eventCodec
         .convert(event.event)
         .map(e => ProjectionEvent(event.id, event.version, event.timestamp, e))
         .handleErrorWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t.some)))
 
-    lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[T] = { (event, retryInterval, remainingRetry) =>
+    lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[TsMs] = { (event, retryInterval, remainingRetry) =>
       projection(event) >>= {
-        case Right(s) =>
-          s.pure
+        case Right(_) =>
+          IO.pure(event.timestamp)
 
         case Left(err) =>
           err match
             case _: TemporaryException =>
               if remainingRetry > 0 then
-                Logger[IO].warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
+                logger.warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
                   >> IO.sleep(retryInterval)
                   >> handle(event, retryInterval * 2, remainingRetry - 1)
               else IO.raiseError(UnrecoverableException("Projection retry failure", err.some))
@@ -56,28 +57,45 @@ object ProjectionProcessor {
 object ScheduledProjection {
   type Ticker = () => IO[Option[Unit]]
 
-  def apply[T, E](
-    processor: ProjectionProcessor[T],
-    initialState: T,
-    query: T => EventQuery,
-    repo: EventRepository,
+  /** Create a scheduled projection
+    *
+    * @param projectionId
+    *   unique ID for this projection
+    * @param name
+    *   aggregate name to be queried
+    * @param eventRepository
+    *   event repository
+    * @param projectionRepository
+    *   projection repository
+    * @param processor
+    *   processor
+    * @param loadInterval
+    *   duration between scheduled polling
+    * @param pollingInterval
+    * @return
+    *   scheduled projection resource
+    */
+  def apply(
+    projectionId: String,
+    name: AggName,
+    eventRepository: EventRepository,
+    projectionRepository: ProjectionRepository,
+    processor: ProjectionProcessor,
     loadInterval: FiniteDuration,
     pollingInterval: FiniteDuration,
   ): Resource[IO, Unit] = {
     val ticker = Ticker(loadInterval)
 
-    ScheduledRunner[T](
-      ticker,
-      prev =>
-        repo
-          .load(query(prev))
-          .evalMap(record => processor(record, prev))
+    val task =
+      projectionRepository.runWithLock(projectionId) { prevTs =>
+        eventRepository
+          .queryByName(EventQuery(name, prevTs))
+          .evalMap(processor(_))
           .compile
           .last
-          >>= { _.getOrElse(prev).pure[IO] },
-      pollingInterval,
-      initialState,
-    )
+      }
+
+    ScheduledRunner(task, ticker, pollingInterval)
   }
 
   object Ticker {
@@ -95,24 +113,30 @@ object ScheduledProjection {
   }
 
   object ScheduledRunner {
+    import org.typelevel.log4cats.Logger
+    import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-    def apply[T](
+    implicit def logger: Logger[IO] = Slf4jLogger.getLogger[IO]
+
+    def apply(
+      task: IO[Boolean],
       ticker: Resource[IO, Ticker],
-      task: T => IO[T],
       pollingInterval: FiniteDuration,
-      initialState: T,
     ): Resource[IO, Unit] =
       for
         t <- ticker
-        _ <- awaitAndRun(t, task, pollingInterval, initialState).background
+        _ <- awaitAndRun(t, task, pollingInterval).background
       yield ()
 
-    private def awaitAndRun[T](t: Ticker, task: T => IO[T], pollingInterval: FiniteDuration, prevState: T): IO[?] =
-      t()
+    private def awaitAndRun(ticker: Ticker, task: IO[Boolean], pollingInterval: FiniteDuration): IO[Unit] =
+      ticker()
         >>= {
-          case Some(_) => task(prevState)
-          case None    => IO.sleep(pollingInterval) >> prevState.pure
+          case Some(_) =>
+            // TODO: retry on false? review the entire flow. add limit?
+            // TODO: why do we need this sleep? busy loop?
+            task.handleErrorWith(t => logger.warn(t)(s"Projection failure") >> IO.unit)
+          case None => IO.sleep(pollingInterval) >> IO.unit
         }
-        >>= { last => awaitAndRun(t, task, pollingInterval, last) }
+        >>= { _ => awaitAndRun(ticker, task, pollingInterval) }
   }
 }

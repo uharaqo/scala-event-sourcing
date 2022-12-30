@@ -47,8 +47,9 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     }
   private val ttlMillis = 86_400_000L
   private val env = new CommandProcessorEnv {
-    override val eventRepository    = DoobieEventRepository(xa)
-    override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
+    override val eventRepository      = DoobieEventRepository(xa)
+    override val projectionRepository = eventRepository.asInstanceOf[DoobieEventRepository]
+    override val stateLoaderFactory   = EventReaderStateLoaderFactory(eventRepository)
   }
   private val userDeps  = new UserAggregate.Dependencies {}
   private val groupDeps = new GroupAggregate.Dependencies {}
@@ -89,7 +90,7 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   private val parser: SendCommandRequest => IO[CommandInput] = { req =>
     IO {
       val p = req.payload.get
-      CommandInput(AggInfo(req.aggregate, req.id), p.typeUrl.split('/').last, p.value.toByteArray)
+      CommandInput(req.aggregate, req.id, p.typeUrl.split('/').last, p.value.toByteArray)
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))
   }

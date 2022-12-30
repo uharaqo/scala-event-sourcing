@@ -3,7 +3,7 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 /** request that comes from outside this system */
-case class CommandInput(info: AggInfo, name: Fqcn, payload: Bytes)
+case class CommandInput(aggregate: AggName, id: AggId, command: Fqcn, payload: Bytes)
 
 case class CommandOutput(records: EventRecords) {
   def version: Option[Version] = records.lastOption.map(_.version)
@@ -37,6 +37,9 @@ trait CommandProcessorEnv {
 
   /** write events into a DB */
   val eventRepository: EventRepository
+
+  /** load events for projection */
+  val projectionRepository: ProjectionRepository
 
   /** access states that are not managed by the aggregate */
   val stateLoaderFactory: StateLoaderFactory

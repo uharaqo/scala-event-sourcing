@@ -29,7 +29,7 @@ class EventSourcingSuite extends CatsEffectSuite {
   private val group1 = "g1"
   private val name1  = "name1"
 
-  test("user aggregate") {
+  test("integration test") {
 
     val test1 = { (setup: TestSetup) =>
       val userAggregateSetup  = new UserAggregateSetup(setup)
@@ -148,8 +148,9 @@ class TestSetup(val xa: Transactor[IO]) {
 
   val env =
     new CommandProcessorEnv {
-      override val eventRepository    = DoobieEventRepository(xa)
-      override val stateLoaderFactory = EventReaderStateLoaderFactory(eventRepository)
+      override val eventRepository      = DoobieEventRepository(xa)
+      override val projectionRepository = eventRepository.asInstanceOf[DoobieEventRepository]
+      override val stateLoaderFactory   = EventReaderStateLoaderFactory(eventRepository)
     }
 
   def newTester[S, C <: GeneratedMessage, E <: GeneratedMessage, C2](
@@ -163,9 +164,10 @@ class TestSetup(val xa: Transactor[IO]) {
         IO {
           val p = com.google.protobuf.any.Any.pack(c)
           CommandInput(
-            info = AggInfo(stateInfo.name, id),
-            name = p.typeUrl.split('/').last,
-            payload = p.value.toByteArray(),
+            stateInfo.name,
+            id,
+            p.typeUrl.split('/').last,
+            payload = p.value.toByteArray,
           )
         }
     CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)
@@ -192,15 +194,16 @@ class UserAggregateSetup(setup: TestSetup) {
 
   val projection =
     ScheduledProjection(
+      "TestProjection",
+      stateInfo.name,
+      env.eventRepository,
+      env.projectionRepository,
       ProjectionProcessor(
-        stateInfo.eventCodec,
-        r => IO.println(s"--- ${stateInfo.name}, $r ---").map(_ => r.asRight),
+        stateInfo,
+        r => IO.println(s"--- ${stateInfo.name}, $r ---").map(Right(_)),
         2,
         1 seconds
       ),
-      ProjectionEvent("", 0L, 0, null),
-      prev => EventQuery(stateInfo.name, prev.timestamp),
-      env.eventRepository,
       10 millis,
       10 millis,
     )
