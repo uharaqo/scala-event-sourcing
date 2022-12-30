@@ -136,7 +136,7 @@ object TestSetup {
   def run(task: TestSetup => Resource[IO, Unit]) =
     (for
       xa <- H2TransactorFactory.create()
-//      xa <- PostgresTransactorFactory.create()
+      // xa <- PostgresTransactorFactory.create()
       _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
       _ <- task(new TestSetup(xa))

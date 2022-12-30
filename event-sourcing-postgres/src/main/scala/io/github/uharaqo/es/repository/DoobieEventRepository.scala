@@ -22,15 +22,15 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
 
   implicit def logger: Logger[IO] = Slf4jLogger.getLogger[IO]
   // query log is enabled by adding this line
-//  implicit val han: LogHandler    = LogHandler.jdkLogHandler
+  // implicit val han: LogHandler = LogHandler.jdkLogHandler
 
   def initTables(): IO[Unit] =
     Seq(CREATE_EVENTS_TABLE, CREATE_PROJECTION_TABLE).traverse(_.update.run).transact(xa).void
 
   override def write(records: EventRecords) =
     // PK: (name, id, ver) prevents conflicts
-    Update[EventRecord](INSERT_EVENT)
-      .updateMany(records)
+    Update[(AggName, AggId, Version, Bytes)](INSERT_EVENT)
+      .updateMany(records.map(r => (r.name, r.id, r.version, r.event)))
       .transact(xa)
       // Return false on a PK conflict
       .attemptSomeSqlState { case sqlstate.class23.UNIQUE_VIOLATION => false }
@@ -47,9 +47,9 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
 
   override def queryByName(query: EventQuery): Stream[IO, EventRecord] =
-    SELECT_EVENTS_BY_RESOURCE(query.name, query.lastTimestamp).query[EventRecord].stream.transact(xa)
+    SELECT_EVENTS_BY_RESOURCE(query.name, query.lastSeqId).query[EventRecord].stream.transact(xa)
 
-  override def runWithLock(projectionId: ProjectionId)(task: TsMs => IO[Option[TsMs]]): IO[Boolean] =
+  override def runWithLock(projectionId: ProjectionId)(task: SeqId => IO[Option[SeqId]]): IO[Boolean] =
     WeakAsync
       .liftK[IO, ConnectionIO]
       .use { lift =>
@@ -67,7 +67,7 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
           result <- lastTs match
             case None => Free.pure(false)
             case Some(lastTs) =>
-              Update[(TsMs, String, TsMs)](UPDATE_PROJECTION)
+              Update[(SeqId, String, SeqId)](UPDATE_PROJECTION)
                 .run((lastTs, projectionId, prevTs))
                 .map(_ > 0)
         yield result
@@ -79,41 +79,42 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
 
 object DoobieEventRepository {
 
-  // ts_ms is an ID across all events. it can be replaced by a sequential ID
+  // seq is an ID across all events. it can be replaced by a sequential ID
   private val CREATE_EVENTS_TABLE =
     sql"""CREATE TABLE IF NOT EXISTS events (
       name VARCHAR(15) NOT NULL,
       id VARCHAR(127) NOT NULL,
       ver BIGINT NOT NULL,
-      ts_ms BIGINT NOT NULL UNIQUE,
       event BYTEA NOT NULL,
+      seq BIGSERIAL NOT NULL UNIQUE,
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT (current_timestamp AT TIME ZONE 'UTC'),
       PRIMARY KEY (name, id, ver)
     )"""
 
   private val INSERT_EVENT =
-    "INSERT INTO events (name, id, ver, ts_ms, event) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO events (name, id, ver, event) VALUES (?, ?, ?, ?)"
 
   private val SELECT_EVENTS =
     (name: AggName, id: AggId, prevVer: Version) =>
       sql"""SELECT ver, event FROM events WHERE name = $name AND id = $id AND ver > $prevVer ORDER BY ver"""
 
   private val SELECT_EVENTS_BY_RESOURCE =
-    (name: AggName, timestampGt: TsMs) =>
-      sql"""SELECT name, id, ver, ts_ms, event FROM events WHERE name = $name AND ts_ms > $timestampGt ORDER BY ts_ms"""
+    (name: AggName, prevSeq: SeqId) =>
+      sql"""SELECT name, id, ver, seq, event FROM events WHERE name = $name AND $prevSeq < seq ORDER BY seq"""
 
   private val CREATE_PROJECTION_TABLE =
     sql"""CREATE TABLE IF NOT EXISTS projections (
     id VARCHAR(127) NOT NULL,
-    ts_ms BIGINT NOT NULL,
+    seq BIGINT NOT NULL,
     PRIMARY KEY (id)
   )"""
 
   private val LOCK_PROJECTION =
-    (id: ProjectionId) => sql"""SELECT ts_ms FROM projections WHERE id = $id LIMIT 1 FOR UPDATE NOWAIT"""
+    (id: ProjectionId) => sql"""SELECT seq FROM projections WHERE id = $id LIMIT 1 FOR UPDATE NOWAIT"""
 
   private val INSERT_PROJECTION =
-    (id: ProjectionId) => sql"""INSERT INTO projections (id, ts_ms) VALUES ($id, 0) ON CONFLICT DO NOTHING""".update
+    (id: ProjectionId) => sql"""INSERT INTO projections (id, seq) VALUES ($id, 0) ON CONFLICT DO NOTHING""".update
 
   private val UPDATE_PROJECTION =
-    """UPDATE projections SET ts_ms = ? WHERE id = ? AND ts_ms = ?"""
+    """UPDATE projections SET seq = ? WHERE id = ? AND seq = ?"""
 }

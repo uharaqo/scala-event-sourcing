@@ -5,4 +5,4 @@ import cats.effect.IO
 type ProjectionId = String
 
 trait ProjectionRepository:
-  def runWithLock(projectionId: ProjectionId)(task: TsMs => IO[Option[TsMs]]): IO[Boolean]
+  def runWithLock(projectionId: ProjectionId)(task: SeqId => IO[Option[SeqId]]): IO[Boolean]

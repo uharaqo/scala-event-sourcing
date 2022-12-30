@@ -4,7 +4,7 @@ import cats.implicits.*
 import cats.effect.IO
 import fs2.Stream
 
-case class EventQuery(name: AggName, lastTimestamp: TsMs)
+case class EventQuery(name: AggName, lastSeqId: SeqId)
 
 trait EventWriter:
 
@@ -31,19 +31,19 @@ trait EventReader:
     */
   def queryById(name: AggName, id: AggId, previousVersion: Version): Stream[IO, VersionedEvent]
 
-  /** Load all events that has a larger timestamp than the [[query.lastTimestamp]]
+  /** Load all events that has a larger seqId than the [[query.lastSeqId]]
     *
     * @param query
-    *   aggregate name and timestamp
+    *   aggregate name and seqId
     * @return
     *   event stream
     */
   def queryByName(query: EventQuery): Stream[IO, EventRecord]
 
 extension (reader: EventReader) {
-  def loadRecords[E](stateInfo: StateInfo[?, E], lastTimestamp: Long = 0L): Stream[IO, (EventRecord, E)] =
+  def loadRecords[E](stateInfo: StateInfo[?, E], lastSeqId: Long = 0L): Stream[IO, (EventRecord, E)] =
     reader
-      .queryByName(EventQuery(stateInfo.name, lastTimestamp))
+      .queryByName(EventQuery(stateInfo.name, lastSeqId))
       .evalMap(r => stateInfo.eventCodec.convert(r.event).map(e => r -> e))
 
   def loadEvents[E](stateInfo: StateInfo[?, E], id: AggId, previousVersion: Long = 0L): Stream[IO, (Version, E)] =

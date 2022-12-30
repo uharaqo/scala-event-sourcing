@@ -8,7 +8,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.data.OptionT
 
 trait ProjectionProcessor:
-  def apply(event: EventRecord): IO[TsMs]
+  def apply(event: EventRecord): IO[SeqId]
 
 object ProjectionProcessor {
   import io.github.uharaqo.es.ProjectionException.*
@@ -27,27 +27,28 @@ object ProjectionProcessor {
     val deserialize = (event: EventRecord) =>
       stateInfo.eventCodec
         .convert(event.event)
-        .map(e => ProjectionEvent(event.id, event.version, event.timestamp, e))
+        .map(e => ProjectionEvent(event.id, event.version, event.seqId, e))
         .handleErrorWith(t => IO.raiseError(UnrecoverableException("Event deserialization failure", t.some)))
 
-    lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[TsMs] = { (event, retryInterval, remainingRetry) =>
-      projection(event) >>= {
-        case Right(_) =>
-          IO.pure(event.timestamp)
+    lazy val handle: (ProjectionEvent[E], FiniteDuration, Int) => IO[SeqId] = {
+      (event, retryInterval, remainingRetry) =>
+        projection(event) >>= {
+          case Right(_) =>
+            IO.pure(event.seqId)
 
-        case Left(err) =>
-          err match
-            case _: TemporaryException =>
-              if remainingRetry > 0 then
-                logger.warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
-                  >> IO.sleep(retryInterval)
-                  >> handle(event, retryInterval * 2, remainingRetry - 1)
-              else IO.raiseError(UnrecoverableException("Projection retry failure", err.some))
-            case _: UnrecoverableException =>
-              IO.raiseError(err)
-            case _: Throwable =>
-              IO.raiseError(UnrecoverableException("Unhandled projection error", err.some))
-      }
+          case Left(err) =>
+            err match
+              case _: TemporaryException =>
+                if remainingRetry > 0 then
+                  logger.warn(err)(s"Projection temporary failure. Retrying (remaining: $remainingRetry)")
+                    >> IO.sleep(retryInterval)
+                    >> handle(event, retryInterval * 2, remainingRetry - 1)
+                else IO.raiseError(UnrecoverableException("Projection retry failure", err.some))
+              case _: UnrecoverableException =>
+                IO.raiseError(err)
+              case _: Throwable =>
+                IO.raiseError(UnrecoverableException("Unhandled projection error", err.some))
+        }
     }
 
     deserialize(event) >>= { handle(_, retryInterval, maxRetry) }
