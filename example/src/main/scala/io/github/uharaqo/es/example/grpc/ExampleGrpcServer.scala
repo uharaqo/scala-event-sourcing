@@ -1,19 +1,17 @@
 package io.github.uharaqo.es.example.grpc
 
-import cats.effect.ExitCode
-import cats.effect.IO
-import cats.effect.IOApp
-import cats.effect.Resource
+import cats.effect.{ExitCode, IO, IOApp, Resource}
+import doobie.util.meta.Meta
 import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
+import io.github.uharaqo.es.Metadata.Key.StringKey
 import io.github.uharaqo.es.example.*
-import io.github.uharaqo.es.grpc.server.GrpcServer
-import io.github.uharaqo.es.repository.DoobieEventRepository
-import io.github.uharaqo.es.repository.H2TransactorFactory
 import io.github.uharaqo.es.grpc.proto.*
-import io.grpc.Metadata
-import io.grpc.Status
+import io.github.uharaqo.es.grpc.server.GrpcServer
+import io.github.uharaqo.es.repository.{DoobieEventRepository, H2TransactorFactory}
+import io.grpc.{Metadata, Status}
 
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.Duration
 
@@ -87,10 +85,16 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
   )
   private val processor = CommandProcessor(processors)
 
-  private val parser: SendCommandRequest => IO[CommandInput] = { req =>
+  private val parser: (SendCommandRequest, Metadata) => IO[CommandInput] = { (req, ctx) =>
     IO {
       val p = req.payload.get
-      CommandInput(req.aggregate, req.id, p.typeUrl.split('/').last, p.value.toByteArray)
+      CommandInput(
+        req.aggregate,
+        req.id,
+        p.typeUrl.split('/').last,
+        p.value.toByteArray,
+        new SimpleMetadata(Map(StringKey("request-id") -> ctx.get(MetadataKeys.requestId)))
+      )
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))
   }
@@ -108,7 +112,7 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
     new GrpcCommandHandlerFs2Grpc[IO, Metadata] {
       override def sendCommand(request: SendCommandRequest, ctx: Metadata): IO[SendCommandResponse] =
         (for
-          parsed <- parser(request)
+          parsed <- parser(request, ctx)
           output <- processor(parsed)
         yield SendCommandResponse(output.version.getOrElse(throw Status.UNKNOWN.asRuntimeException()), "TODO"))
           .handleErrorWith(errorHandler)
@@ -116,4 +120,8 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
       override def loadState(request: LoadStateRequest, ctx: Metadata): IO[LoadStateResponse] = ???
     }
   )
+}
+
+object MetadataKeys {
+  val requestId = Metadata.Key.of("request-id", Metadata.BINARY_BYTE_MARSHALLER)
 }

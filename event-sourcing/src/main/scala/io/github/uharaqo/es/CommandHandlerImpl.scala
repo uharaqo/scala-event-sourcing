@@ -5,6 +5,7 @@ import cats.effect.IO
 class DefaultCommandHandlerContext[S, E](
   override val info: StateInfo[S, E],
   override val id: AggId,
+  override val metadata: Metadata,
   override val prevState: VersionedState[S],
   stateLoaderFactory: StateLoaderFactory,
 ) extends CommandHandlerContext[S, E] {
@@ -22,11 +23,9 @@ class DefaultCommandHandlerContext[S, E](
     for
       stateLoader <- stateLoaderFactory(info)
       verS        <- stateLoader.load(id)
-      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, verS, stateLoaderFactory)
+      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, metadata, verS, stateLoaderFactory)
     yield (verS.state, ctx)
 }
-
-type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]
 
 object PartialCommandHandler {
   def toCommandHandler[S, C, E](
