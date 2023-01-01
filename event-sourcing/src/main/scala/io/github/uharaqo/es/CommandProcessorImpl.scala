@@ -24,17 +24,13 @@ object PartialCommandProcessor {
     commandInfo: CommandInfo[S, C, E],
     stateLoader: StateLoader[S],
     stateLoaderFactory: StateLoaderFactory,
-    eventWriter: EventWriter
+    eventWriter: EventWriter,
   ): PartialCommandProcessor = {
-    val inputParser = CommandInputParser(commandInfo)
-
-    val contextFactory: (AggId, VersionedState[S]) => CommandHandlerContext[S, E] =
-      (id, prevState) => new DefaultCommandHandlerContext(stateInfo, id, prevState, stateLoaderFactory)
-
-    val contextProvider: CommandHandlerContextProvider[S, E] = id =>
-      stateLoader.load(id).map(prevState => contextFactory(id, prevState))
-
-    val onSuccess: CommandHandlerCallback[S, E] = (ctx, records) =>
+    val inputParser    = CommandInputParser(commandInfo)
+    val contextFactory = CommandHandlerContextFactory(stateInfo, stateLoaderFactory)
+    val contextProvider = (id: AggId, metadata: Metadata) =>
+      stateLoader.load(id).map(prevState => contextFactory(id, prevState, metadata))
+    val onSuccess = (ctx: CommandHandlerContext[S, E], records: EventRecords) =>
       stateLoader.onSuccess(ctx.id, ctx.prevState, records)
 
     PartialCommandProcessor(inputParser, contextProvider, eventWriter, onSuccess)
@@ -57,7 +53,7 @@ object PartialCommandProcessor {
           handler <- inputParser(input)
 
           // recover the latest state by loading events
-          ctx <- contextProvider(id)
+          ctx <- contextProvider(id, input.metadata)
 
           // invoke the hanlder
           records <- handler(ctx).handleErrorWith(t => IO.raiseError(CommandHandlerFailure(ctx.info.name, t)))
@@ -70,6 +66,14 @@ object PartialCommandProcessor {
           - <- onSuccess(ctx, records)
         yield records
     }
+}
+
+object CommandHandlerContextFactory {
+  def apply[S, E](
+    stateInfo: StateInfo[S, E],
+    stateLoaderFactory: StateLoaderFactory,
+  ): CommandHandlerContextFactory[S, E] = (id, prevState, metadata) =>
+    new DefaultCommandHandlerContext[S, E](stateInfo, id, metadata, prevState, stateLoaderFactory)
 }
 
 object CommandInputParser {

@@ -3,7 +3,13 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 /** request that comes from outside this system */
-case class CommandInput(aggregate: AggName, id: AggId, command: Fqcn, payload: Bytes)
+case class CommandInput(
+  aggregate: AggName,
+  id: AggId,
+  command: Fqcn,
+  payload: Bytes,
+  metadata: Metadata = Metadata.empty
+)
 
 case class CommandOutput(records: EventRecords) {
   def version: Option[Version] = records.lastOption.map(_.version)
@@ -27,7 +33,7 @@ type CommandInputParser[S, C, E] =
   PartialFunction[CommandInput, IO[CommandHandlerContext[S, E] => IO[EventRecords]]]
 
 /** provide context for a command handler */
-type CommandHandlerContextProvider[S, E] = AggId => IO[CommandHandlerContext[S, E]]
+type CommandHandlerContextProvider[S, E] = (AggId, Metadata) => IO[CommandHandlerContext[S, E]]
 
 /** invoked on success */
 type CommandHandlerCallback[S, E] = (CommandHandlerContext[S, E], EventRecords) => IO[Unit]

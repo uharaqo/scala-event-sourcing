@@ -3,6 +3,7 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
+import io.github.uharaqo.es.Metadata.Key.StringKey
 import io.github.uharaqo.es.example.UserAggregate.Dependencies
 import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
@@ -11,6 +12,7 @@ import io.github.uharaqo.es.grpc.server.save
 object UserAggregate {
 
   type UserCommandHandler = PartialCommandHandler[User, UserCommand, UserEventMessage]
+
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
@@ -46,7 +48,7 @@ object UserAggregate {
           case User.EMPTY =>
             ctx.save(UserRegistered(c.name))
 
-          case User(name, point) =>
+          case _: User =>
             ctx.fail(IllegalStateException("Already registered"))
     }
   }
@@ -58,7 +60,7 @@ object UserAggregate {
           case User.EMPTY =>
             ctx.fail(IllegalStateException("User not found"))
 
-          case User(name, point) =>
+          case _: User =>
             ctx.save(PointAdded(c.point))
     }
   }
@@ -70,8 +72,8 @@ object UserAggregate {
           case User.EMPTY =>
             ctx.fail(IllegalStateException("User not found"))
 
-          case User(name, point) =>
-            if point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
+          case s: User =>
+            if s.point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
             else
               val senderId = ctx.id
               for
@@ -87,9 +89,9 @@ object UserAggregate {
   // event handler
   lazy val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
     e.toUserEvent.asNonEmpty.get match
-      case UserRegistered(name, unknownFields) =>
+      case e: UserRegistered =>
         s match
-          case User.EMPTY => User(name, 0).some
+          case User.EMPTY => User(e.name, 0).some
           case _          => throw EsException.UnexpectedException
 
       case PointAdded(point, unknownFields) =>

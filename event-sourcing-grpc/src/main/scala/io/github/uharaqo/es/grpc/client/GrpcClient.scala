@@ -8,6 +8,6 @@ class CommandHandlerClient(channel: ManagedChannel) {
 
   private val stub = GrpcCommandHandlerFs2Grpc.stubResource[IO](channel)
 
-  def call(request: SendCommandRequest): IO[SendCommandResponse] =
-    stub.use(_.sendCommand(request, Metadata()))
+  def call(request: SendCommandRequest, metadata: Metadata = Metadata()): IO[SendCommandResponse] =
+    stub.use(_.sendCommand(request, metadata))
 }

@@ -1,16 +1,12 @@
 package io.github.uharaqo.es.example
 
-import cats.effect.ExitCode
-import cats.effect.IO
-import cats.effect.Resource
+import cats.effect.{ExitCode, IO, Resource}
 import cats.implicits.*
 import com.github.benmanes.caffeine.cache.Caffeine
-import com.google.protobuf.ByteString
 import doobie.util.transactor.Transactor
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.repository.*
-import io.github.uharaqo.es.grpc.proto.SendCommandRequest
 import io.github.uharaqo.es.example.proto.*
+import io.github.uharaqo.es.repository.*
 import munit.*
 import scalacache.AbstractCache
 import scalacache.caffeine.CaffeineCache
@@ -18,8 +14,8 @@ import scalapb.GeneratedMessage
 
 import java.nio.charset.StandardCharsets
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
+import java.util.UUID
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import scala.concurrent.duration.*
 
 class EventSourcingSuite extends CatsEffectSuite {
@@ -162,13 +158,14 @@ class TestSetup(val xa: Transactor[IO]) {
     val commandFactory =
       (id: AggId, c: C) =>
         IO {
-          val p = com.google.protobuf.any.Any.pack(c)
-          CommandInput(
-            stateInfo.name,
-            id,
-            p.typeUrl.split('/').last,
-            payload = p.value.toByteArray,
-          )
+          val p     = com.google.protobuf.any.Any.pack(c)
+          val last  = p.typeUrl.split('/').last
+          val array = p.value.toByteArray()
+          val metadata =
+            new SimpleMetadata(
+              Map(Metadata.Key.StringKey("request-id") -> UUID.randomUUID().toString.getBytes(StandardCharsets.UTF_8))
+            )
+          CommandInput(stateInfo.name, id, last, array, metadata)
         }
     CommandTester(stateInfo, commandFactory, processor, env.stateLoaderFactory)
 
