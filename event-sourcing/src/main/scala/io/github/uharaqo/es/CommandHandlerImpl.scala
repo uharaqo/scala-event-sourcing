@@ -13,16 +13,23 @@ case class DefaultCommandHandlerContext[S, E](
 extension [S, E](ctx: CommandHandlerContext[S, E]) {
 
   /** Generate events for this context */
-  def save(events: E*): IO[EventRecords] =
+  def save(events: E*): IO[CommandOutput] =
     import cats.implicits.*
-    events.zipWithIndex.traverse {
-      case (e, i) =>
-        ctx.info.eventCodec.convert(e).map { e =>
-          EventRecord(ctx.info.name, ctx.id, ctx.prevState.version + i + 1, System.currentTimeMillis(), e)
-        }
-    }
+    events.zipWithIndex
+      .traverse {
+        case (e, i) =>
+          ctx.info.eventCodec.convert(e).map { e =>
+            val name    = ctx.info.name
+            val id      = ctx.id
+            val version = ctx.prevState.version + i + 1
+            val event   = e
 
-  def fail(e: Exception): IO[EventRecords] = IO.raiseError(e)
+            EventOutput(name, id, version, event)
+          }
+      }
+      .map(CommandOutput(_))
+
+  def fail(e: Exception): IO[CommandOutput] = IO.raiseError(e)
 
   /** Load state of another aggregate */
   def withState[S2, E2](info: StateInfo[S2, E2], id: AggId): IO[(S2, CommandHandlerContext[S2, E2])] =
@@ -37,7 +44,7 @@ object PartialCommandHandler {
   def toCommandHandler[S, C, E](
     handlers: Seq[PartialCommandHandler[S, C, E]]
   ): CommandHandler[S, C, E] = { (s, c, ctx) =>
-    val f: PartialFunction[C, IO[EventRecords]] =
+    val f: PartialFunction[C, IO[CommandOutput]] =
       handlers
         .map(_(s, ctx))
         .foldLeft(PartialFunction.empty)((pf1, pf2) => if pf2.isDefinedAt(c) then pf1.orElse(pf2) else pf1)

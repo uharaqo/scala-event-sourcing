@@ -3,9 +3,9 @@ package io.github.uharaqo.es
 import cats.effect.IO
 
 trait CommandHandler[S, C, E]:
-  def apply(s: S, c: C, ctx: CommandHandlerContext[S, E]): IO[EventRecords]
+  def apply(state: S, command: C, ctx: CommandHandlerContext[S, E]): IO[CommandOutput]
 
-type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]
+type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[CommandOutput]]
 
 type CommandHandlerContextFactory[S, E] = (AggId, Metadata, VersionedState[S]) => CommandHandlerContext[S, E]
 

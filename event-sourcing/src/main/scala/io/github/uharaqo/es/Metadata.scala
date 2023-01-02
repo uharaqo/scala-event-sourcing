@@ -2,8 +2,12 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
+import scala.annotation.targetName
+
 trait Metadata:
   def get[A](key: Metadata.Key[A]): IO[Option[A]]
+  def concat(other: Metadata): Metadata
+  @`inline` @targetName("concatOp") def ++(other: Metadata): Metadata = concat(other)
 
 object Metadata:
   class Key[A](val name: String, val codec: Codec[A]) {
@@ -35,11 +39,22 @@ object Metadata:
 
   val empty = new Metadata {
     override def get[A](key: Key[A]): IO[Option[A]] = IO.pure(None)
+    override def concat(other: Metadata): Metadata  = other
+    override def toString: String                   = "EmptyMetadata"
   }
 
-class SimpleMetadata(data: Map[Metadata.Key[?], Bytes]) extends Metadata {
+class DefaultMetadata(private val data: Map[Metadata.Key[?], Bytes]) extends Metadata {
   override def get[A](key: Metadata.Key[A]): IO[Option[A]] =
     data.get(key) match
       case Some(v) => key.codec.convert(v).map(Some(_))
       case None    => IO.pure(None)
+  override def concat(other: Metadata): Metadata =
+    other match
+      case Metadata.empty     => this
+      case o: DefaultMetadata => DefaultMetadata(data ++ o.data)
+      case _ =>
+        throw IllegalArgumentException(
+          s"Unsupported Operation: concat DefaultMetadata and ${other.getClass.getCanonicalName}"
+        )
+  override def toString: String = data.toString()
 }

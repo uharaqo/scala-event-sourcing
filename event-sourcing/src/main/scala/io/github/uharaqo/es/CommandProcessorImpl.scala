@@ -6,13 +6,13 @@ object CommandProcessor {
 
   /** combine PartialCommandProcessors to create a single facade */
   def apply(processors: Seq[PartialCommandProcessor]): CommandProcessor = {
-    val f: PartialFunction[CommandInput, IO[EventRecords]] =
+    val f: PartialCommandProcessor =
       processors.foldLeft(PartialFunction.empty)((pf1, pf2) => pf2.orElse(pf1))
     input =>
       f.applyOrElse(
         input,
         _ => IO.raiseError(EsException.InvalidCommand(input.command))
-      ).map(CommandOutput(_))
+      )
   }
 }
 
@@ -30,23 +30,23 @@ object PartialCommandProcessor {
     val contextFactory = CommandHandlerContextFactory(stateInfo, stateLoaderFactory)
     val contextProvider = (id: AggId, metadata: Metadata) =>
       stateLoader.load(id).map(prevState => contextFactory(id, metadata, prevState))
-    val onSuccess = (ctx: CommandHandlerContext[S, E], records: EventRecords) =>
-      stateLoader.onSuccess(ctx.id, ctx.prevState, records)
+    val onSuccess = (ctx: CommandHandlerContext[S, E], output: CommandOutput) =>
+      stateLoader.onSuccess(ctx.id, ctx.prevState, output)
 
     PartialCommandProcessor(inputParser, contextProvider, eventWriter, onSuccess)
   }
 
-  def apply[S, C, E](
-    inputParser: CommandInputParser[S, C, E],
+  def apply[S, E](
+    inputParser: CommandInputParser[S, E],
     contextProvider: CommandHandlerContextProvider[S, E],
     eventWriter: EventWriter,
     onSuccess: CommandHandlerCallback[S, E],
   ): PartialCommandProcessor =
     import EsException.*
 
-    new PartialFunction[CommandInput, IO[EventRecords]] {
+    new PartialCommandProcessor {
       override def isDefinedAt(input: CommandInput): Boolean = inputParser.isDefinedAt(input)
-      override def apply(input: CommandInput): IO[EventRecords] =
+      override def apply(input: CommandInput): IO[CommandOutput] =
         val id = input.id
         for
           // create a command handler from the input
@@ -56,15 +56,15 @@ object PartialCommandProcessor {
           ctx <- contextProvider(id, input.metadata)
 
           // invoke the hanlder
-          records <- handler(ctx).handleErrorWith(t => IO.raiseError(CommandHandlerFailure(ctx.info.name, t)))
+          output <- handler(ctx).handleErrorWith(t => IO.raiseError(CommandHandlerFailure(ctx.info.name, t)))
 
           // write the output events. it must succeed only when there's no conflicts
-          success <- eventWriter.write(records)
+          success <- eventWriter.write(output)
           _       <- if !success then IO.raiseError(EventStoreConflict(ctx.info.name)) else IO.unit
 
           // callbacks
-          - <- onSuccess(ctx, records)
-        yield records
+          - <- onSuccess(ctx, output)
+        yield output
     }
 }
 
@@ -77,11 +77,24 @@ object CommandHandlerContextFactory {
 }
 
 object CommandInputParser {
-  def apply[S, C, E](commandInfo: CommandInfo[S, C, E]): CommandInputParser[S, CommandInput, E] =
-    new CommandInputParser[S, CommandInput, E] {
+  def apply[S, C, E](commandInfo: CommandInfo[S, C, E]): CommandInputParser[S, E] =
+    new CommandInputParser[S, E] {
       override def isDefinedAt(input: CommandInput): Boolean = commandInfo.fqcn == input.command
-      override def apply(input: CommandInput): IO[CommandHandlerContext[S, E] => IO[EventRecords]] =
+      override def apply(input: CommandInput): IO[CommandHandlerContext[S, E] => IO[CommandOutput]] =
         for command <- commandInfo.deserializer.convert(input.payload)
         yield ctx => commandInfo.commandHandler(ctx.prevState.state, command, ctx)
     }
+}
+
+/** dependencies used to load states and write events */
+trait CommandProcessorEnv {
+
+  /** write events into a DB */
+  val eventRepository: EventRepository
+
+  /** load events for projection */
+  val projectionRepository: ProjectionRepository
+
+  /** access states that are not managed by the aggregate */
+  val stateLoaderFactory: StateLoaderFactory
 }

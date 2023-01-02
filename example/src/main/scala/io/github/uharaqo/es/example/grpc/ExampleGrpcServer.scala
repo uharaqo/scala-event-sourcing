@@ -93,7 +93,7 @@ private class GrpcCommandProcessor(xa: Transactor[IO]) {
         req.id,
         p.typeUrl.split('/').last,
         p.value.toByteArray,
-        new SimpleMetadata(Map(StringKey("request-id") -> ctx.get(MetadataKeys.requestId)))
+        new DefaultMetadata(Map(StringKey("request-id") -> ctx.get(MetadataKeys.requestId)))
       )
     }
       .handleErrorWith(t => IO.raiseError(Status.INVALID_ARGUMENT.withCause(t).asRuntimeException()))

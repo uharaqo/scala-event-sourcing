@@ -8,14 +8,14 @@ case class EventQuery(name: AggName, lastSeqId: SeqId)
 
 trait EventWriter:
 
-  /** Persist records into a storage. All records must be persisted atomically; 0 or all records must be written.
+  /** Persist events into a storage. All events must be persisted atomically; 0 or all records must be written.
     *
-    * @param records
-    *   records
+    * @param output
+    *   events
     * @return
     *   true on success; false on conflict
     */
-  def write(records: EventRecords): IO[Boolean] // TODO: just raise exception?
+  def write(output: CommandOutput): IO[Boolean] // TODO: just raise exception?
 
 trait EventReader:
   /** Load all events that has a larger version than the [[previousVersion]].
