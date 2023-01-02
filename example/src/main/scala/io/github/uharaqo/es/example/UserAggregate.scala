@@ -41,33 +41,31 @@ object UserAggregate {
       .traverse(identity)
       .map(PartialCommandHandler.toCommandHandler(_, _.toUserCommand))
 
-  private val registerUser: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: RegisterUser =>
+  private val registerUser: Dependencies => UserCommandHandler = deps => {
+    case c: RegisterUser =>
+      (s, ctx) =>
         s match
           case User.EMPTY =>
             ctx.save(UserRegistered(c.name))
 
           case _: User =>
             ctx.fail(IllegalStateException("Already registered"))
-    }
   }
 
-  private val addPoint: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: AddPoint =>
+  private val addPoint: Dependencies => UserCommandHandler = deps => {
+    case c: AddPoint =>
+      (s, ctx) =>
         s match
           case User.EMPTY =>
             ctx.fail(IllegalStateException("User not found"))
 
           case _: User =>
             ctx.save(PointAdded(c.point))
-    }
   }
 
-  private val sendPoint: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: SendPoint =>
+  private val sendPoint: Dependencies => UserCommandHandler = deps => {
+    case c: SendPoint =>
+      (s, ctx) =>
         s match
           case User.EMPTY =>
             ctx.fail(IllegalStateException("User not found"))
@@ -83,7 +81,6 @@ object UserAggregate {
                   else ctx2.save(PointReceived(senderId, c.point))
                 }
               yield sent ++ received
-    }
   }
 
   // event handler

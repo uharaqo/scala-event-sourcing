@@ -38,9 +38,9 @@ object GroupAggregate {
       .traverse(identity)
       .andThen(PartialCommandHandler.toCommandHandler(_, _.toGroupCommand))
 
-  private val createGroup: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: CreateGroup =>
+  private val createGroup: Dependencies => GroupCommandHandler = deps => {
+    case c: CreateGroup =>
+      (s, ctx) =>
         s match
           case Group.EMPTY =>
             ctx.withState(UserAggregate.stateInfo, c.ownerId) >>= { (s2, ctx2) =>
@@ -49,12 +49,11 @@ object GroupAggregate {
             }
           case _ =>
             ctx.fail(IllegalStateException("Already exists"))
-    }
   }
 
-  private val addUser: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: AddUser =>
+  private val addUser: Dependencies => GroupCommandHandler = deps => {
+    case c: AddUser =>
+      (s, ctx) =>
         s match
           case Group.EMPTY =>
             ctx.fail(IllegalStateException("Group not found"))
@@ -66,7 +65,6 @@ object GroupAggregate {
                 if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
                 else ctx.save(UserAdded(c.userId))
               }
-    }
   }
 
   // event handler

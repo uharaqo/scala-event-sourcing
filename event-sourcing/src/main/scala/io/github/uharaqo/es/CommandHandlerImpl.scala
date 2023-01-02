@@ -40,24 +40,28 @@ extension [S, E](ctx: CommandHandlerContext[S, E]) {
     yield (verS.state, ctx2)
 }
 
-object PartialCommandHandler {
-  def toCommandHandler[S, C, E](
-    handlers: Seq[PartialCommandHandler[S, C, E]]
-  ): CommandHandler[S, C, E] = { (s, c, ctx) =>
-    val f: PartialFunction[C, IO[CommandOutput]] =
-      handlers
-        .map(_(s, ctx))
-        .foldLeft(PartialFunction.empty)((pf1, pf2) => if pf2.isDefinedAt(c) then pf1.orElse(pf2) else pf1)
+object CommandHandlerContextFactory {
+  def apply[S, E](
+    stateInfo: StateInfo[S, E],
+    stateLoaderFactory: StateLoaderFactory,
+  ): CommandHandlerContextFactory[S, E] = (id, metadata, prevState) =>
+    new DefaultCommandHandlerContext[S, E](stateInfo, id, metadata, prevState, stateLoaderFactory)
+}
 
-    if f.isDefinedAt(c) then f(c) else IO.raiseError(EsException.InvalidCommand(ctx.info.name))
-  }
+object PartialCommandHandler {
+  def toCommandHandler[S, C, E](handlers: Seq[PartialCommandHandler[S, C, E]]): CommandHandler[S, C, E] =
+    val handler = (c: C) => (for (h <- handlers; f <- h.lift(c)) yield f).headOption
+    (s, c, ctx) =>
+      handler(c) match
+        case Some(f) => f(s, ctx)
+        case None    => IO.raiseError(EsException.UnhandledCommand(ctx.info.name, c.getClass.getCanonicalName))
 
   def toCommandHandler[S, C, E, C2](
     handlers: Seq[PartialCommandHandler[S, C2, E]],
     mapper: C => C2
-  ): CommandHandler[S, C, E] = { (s, c, ctx) =>
-    val c2 = mapper(c)
-    val f  = toCommandHandler[S, C2, E](handlers)
-    f(s, c2, ctx)
+  ): CommandHandler[S, C, E] = {
+    val f = toCommandHandler[S, C2, E](handlers)
+
+    (s, c, ctx) => f(s, mapper(c), ctx)
   }
 }

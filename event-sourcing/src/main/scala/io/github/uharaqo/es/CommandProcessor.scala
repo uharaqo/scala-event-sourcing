@@ -13,11 +13,6 @@ case class CommandInput(
   metadata: Metadata = Metadata.empty
 )
 
-case class CommandOutput(events: Seq[EventOutput], metadata: Metadata = Metadata.empty):
-  def version: Option[Version] = events.lastOption.map(_.version)
-  @`inline` @targetName("concat") final def ++(other: CommandOutput): CommandOutput =
-    CommandOutput(events ++ other.events, metadata ++ other.metadata)
-
 /** information related to the command handler */
 case class CommandInfo[S, C, E](
   fqcn: Fqcn,
@@ -25,17 +20,19 @@ case class CommandInfo[S, C, E](
   commandHandler: CommandHandler[S, C, E],
 )
 
-/** facade to process a command. Looks up a processor and dispatch a command */
+/** facade that looks up a [[PartialCommandHandler]] and dispatch the input */
 type CommandProcessor = CommandInput => IO[CommandOutput]
 
-/** standalone CommandProcessor that handles some of the CommandInputs */
-type PartialCommandProcessor = PartialFunction[CommandInput, IO[CommandOutput]]
+/** standalone command processor that handles some [[CommandInput]]s */
+type PartialCommandProcessor = CommandInput => Option[IO[CommandOutput]]
 
-/** create a command handler from a CommandInput */
-type CommandInputParser[S, E] = PartialFunction[CommandInput, IO[CommandHandlerContext[S, E] => IO[CommandOutput]]]
+/** provide context for [[CommandTask]] */
+type CommandHandlerContextProvider[S, E] = CommandInput => IO[CommandHandlerContext[S, E]]
 
-/** provide context for a command handler */
-type CommandHandlerContextProvider[S, E] = (AggId, Metadata) => IO[CommandHandlerContext[S, E]]
+/** emit output for [[CommandHandlerContext]] */
+type CommandTask[S, E] = CommandHandlerContext[S, E] => IO[CommandOutput]
+
+type CommandTaskProvider[S, E] = CommandInput => Option[IO[CommandTask[S, E]]]
 
 /** invoked on success */
 type CommandHandlerCallback[S, E] = (CommandHandlerContext[S, E], CommandOutput) => IO[Unit]
