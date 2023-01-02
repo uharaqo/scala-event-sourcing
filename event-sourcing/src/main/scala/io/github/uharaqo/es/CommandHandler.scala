@@ -7,7 +7,7 @@ trait CommandHandler[S, C, E]:
 
 type PartialCommandHandler[S, C, E] = (S, CommandHandlerContext[S, E]) => PartialFunction[C, IO[EventRecords]]
 
-type CommandHandlerContextFactory[S, E] = (AggId, VersionedState[S], Metadata) => CommandHandlerContext[S, E]
+type CommandHandlerContextFactory[S, E] = (AggId, Metadata, VersionedState[S]) => CommandHandlerContext[S, E]
 
 /** Helper for command processor */
 trait CommandHandlerContext[S, E]:
@@ -15,10 +15,4 @@ trait CommandHandlerContext[S, E]:
   val id: AggId
   val metadata: Metadata
   val prevState: VersionedState[S]
-
-  def save(events: E*): IO[EventRecords]
-
-  def fail(e: Exception): IO[EventRecords] = IO.raiseError(e)
-
-  /** Load state of another aggregate */
-  def withState[S2, E2](info: StateInfo[S2, E2], id: AggId): IO[(S2, CommandHandlerContext[S2, E2])]
+  val stateLoaderFactory: StateLoaderFactory

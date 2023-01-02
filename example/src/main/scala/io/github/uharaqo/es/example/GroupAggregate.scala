@@ -3,10 +3,9 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
+import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
 import io.github.uharaqo.es.grpc.server.save
-import io.github.uharaqo.es.example.proto.*
-import io.github.uharaqo.es.example.proto.UserEvent.Empty
 
 object GroupAggregate {
 

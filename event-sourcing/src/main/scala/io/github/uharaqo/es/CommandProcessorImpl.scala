@@ -12,7 +12,7 @@ object CommandProcessor {
       f.applyOrElse(
         input,
         _ => IO.raiseError(EsException.InvalidCommand(input.command))
-      ).map(CommandOutput.apply)
+      ).map(CommandOutput(_))
   }
 }
 
@@ -29,7 +29,7 @@ object PartialCommandProcessor {
     val inputParser    = CommandInputParser(commandInfo)
     val contextFactory = CommandHandlerContextFactory(stateInfo, stateLoaderFactory)
     val contextProvider = (id: AggId, metadata: Metadata) =>
-      stateLoader.load(id).map(prevState => contextFactory(id, prevState, metadata))
+      stateLoader.load(id).map(prevState => contextFactory(id, metadata, prevState))
     val onSuccess = (ctx: CommandHandlerContext[S, E], records: EventRecords) =>
       stateLoader.onSuccess(ctx.id, ctx.prevState, records)
 
@@ -72,7 +72,7 @@ object CommandHandlerContextFactory {
   def apply[S, E](
     stateInfo: StateInfo[S, E],
     stateLoaderFactory: StateLoaderFactory,
-  ): CommandHandlerContextFactory[S, E] = (id, prevState, metadata) =>
+  ): CommandHandlerContextFactory[S, E] = (id, metadata, prevState) =>
     new DefaultCommandHandlerContext[S, E](stateInfo, id, metadata, prevState, stateLoaderFactory)
 }
 

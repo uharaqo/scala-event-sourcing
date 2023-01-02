@@ -4,14 +4,14 @@ import cats.effect.IO
 
 /** request that comes from outside this system */
 case class CommandInput(
-  aggregate: AggName,
+  name: AggName,
   id: AggId,
   command: Fqcn,
   payload: Bytes,
   metadata: Metadata = Metadata.empty
 )
 
-case class CommandOutput(records: EventRecords) {
+case class CommandOutput(records: EventRecords, metadata: Metadata = Metadata.empty) {
   def version: Option[Version] = records.lastOption.map(_.version)
 }
 

@@ -2,29 +2,35 @@ package io.github.uharaqo.es
 
 import cats.effect.IO
 
-class DefaultCommandHandlerContext[S, E](
-  override val info: StateInfo[S, E],
-  override val id: AggId,
-  override val metadata: Metadata,
-  override val prevState: VersionedState[S],
+case class DefaultCommandHandlerContext[S, E](
+  info: StateInfo[S, E],
+  id: AggId,
+  metadata: Metadata,
+  prevState: VersionedState[S],
   stateLoaderFactory: StateLoaderFactory,
-) extends CommandHandlerContext[S, E] {
-  import cats.implicits.*
+) extends CommandHandlerContext[S, E]
 
-  override def save(events: E*): IO[EventRecords] =
+extension [S, E](ctx: CommandHandlerContext[S, E]) {
+
+  /** Generate events for this context */
+  def save(events: E*): IO[EventRecords] =
+    import cats.implicits.*
     events.zipWithIndex.traverse {
       case (e, i) =>
-        info.eventCodec.convert(e).map { e =>
-          EventRecord(info.name, id, prevState.version + i + 1, System.currentTimeMillis(), e)
+        ctx.info.eventCodec.convert(e).map { e =>
+          EventRecord(ctx.info.name, ctx.id, ctx.prevState.version + i + 1, System.currentTimeMillis(), e)
         }
     }
 
-  override def withState[S2, E2](info: StateInfo[S2, E2], id: AggId): IO[(S2, CommandHandlerContext[S2, E2])] =
+  def fail(e: Exception): IO[EventRecords] = IO.raiseError(e)
+
+  /** Load state of another aggregate */
+  def withState[S2, E2](info: StateInfo[S2, E2], id: AggId): IO[(S2, CommandHandlerContext[S2, E2])] =
     for
-      stateLoader <- stateLoaderFactory(info)
+      stateLoader <- ctx.stateLoaderFactory(info)
       verS        <- stateLoader.load(id)
-      ctx = new DefaultCommandHandlerContext[S2, E2](info, id, metadata, verS, stateLoaderFactory)
-    yield (verS.state, ctx)
+      ctx2 = new DefaultCommandHandlerContext[S2, E2](info, id, ctx.metadata, verS, ctx.stateLoaderFactory)
+    yield (verS.state, ctx2)
 }
 
 object PartialCommandHandler {
