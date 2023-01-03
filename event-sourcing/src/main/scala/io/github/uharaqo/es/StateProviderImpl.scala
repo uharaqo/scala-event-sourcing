@@ -1,8 +1,10 @@
 package io.github.uharaqo.es
 
 import cats.effect.IO
-import fs2.Stream
 import cats.effect.kernel.Ref
+import fs2.Stream
+
+import scala.util.{Failure, Success}
 
 extension [S, E](info: StateInfo[S, E]) {
   def nextState(
@@ -19,8 +21,10 @@ extension [S, E](info: StateInfo[S, E]) {
         for
           prevVerS <- prevState
           nextE    <- info.eventCodec.convert(ve.event)
-          nextS    <- IO.pure(info.eventHandler(prevVerS.state, nextE))
-        yield VersionedState(ve.version, nextS.getOrElse(prevVerS.state))
+          nextS <- info
+            .eventHandler(prevVerS.state, nextE)
+            .fold(t => IO.raiseError(EsException.EventHandlerFailure(t)), IO.pure)
+        yield VersionedState(ve.version, nextS)
       }
       .flatten
 }
@@ -64,6 +68,7 @@ class CachedStateLoaderFactory(
 }
 
 import scalacache.*
+
 import scala.concurrent.duration.Duration
 
 trait StateCache[S]:

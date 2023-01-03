@@ -51,19 +51,25 @@ object CommandHandlerContextFactory {
 trait AggregateHelper[C, S, E, D] {
 
   import scala.reflect.ClassTag
-  def handlerFor[CC <: C: ClassTag](f: D => CommandHandler[CC, S, E]): D => PartialCommandHandler[C, S, E] =
-    (d: D) => PartialCommandHandler.handlerFor(f(d))
+  def commandHandlerFor[C2 <: C: ClassTag](f: D => CommandHandler[C2, S, E]): D => PartialCommandHandler[C, S, E] =
+    (d: D) => PartialCommandHandler.commandHandlerFor(f(d))
 
-  def toCommandHandler[C0](
-    mapper: C0 => C,
-    handlers: (D => PartialCommandHandler[C, S, E])*
-  ): D => CommandHandler[C0, S, E] =
-    import cats.implicits.*
-    for hs <- handlers.traverse(identity)
-    yield PartialCommandHandler.toCommandHandler(hs, mapper)
+  def commandHandler(handlers: (D => PartialCommandHandler[C, S, E])*): D => CommandHandler[C, S, E] =
+    PartialCommandHandler.toCommandHandler[C, S, E, D](handlers*)
 
-  def eventHandler[E1](mapper: E => Option[E1] = e => Some(e))(f: (S, E1) => Option[S]): EventHandler[S, E] = {
-    (s, e) => mapper(e).flatMap(f(s, _))
+  def convert[C2](mapper: C => C2) = new MappedAggregateHelper[C, S, E, D, C2](mapper)
+
+  def eventHandler(f: (S, E) => S): EventHandler[S, E] = (s, e) => scala.util.Try(f(s, e))
+}
+
+class MappedAggregateHelper[C, S, E, D, C2](private val mapper: C => C2) {
+  import scala.reflect.ClassTag
+  def commandHandlerFor[C3 <: C2: ClassTag](f: D => CommandHandler[C3, S, E]): D => PartialCommandHandler[C2, S, E] =
+    (d: D) => PartialCommandHandler.commandHandlerFor(f(d))
+
+  def commandHandler(handlers: (D => PartialCommandHandler[C2, S, E])*): D => CommandHandler[C, S, E] = {
+    val h = PartialCommandHandler.toCommandHandler[C2, S, E, D](handlers*)
+    d => (c, s, ctx) => h(d)(mapper(c), s, ctx)
   }
 }
 
@@ -72,26 +78,23 @@ object AggregateHelper {
 }
 
 object PartialCommandHandler {
-  def toCommandHandler[C, S, E](handlers: Seq[PartialCommandHandler[C, S, E]]): CommandHandler[C, S, E] =
+  def toCommandHandler[C, S, E, D](handlers: (D => PartialCommandHandler[C, S, E])*): D => CommandHandler[C, S, E] = {
+    import cats.implicits.*
+    for hs <- handlers.traverse(identity)
+    yield merge(hs)
+  }
+
+  private def merge[C, S, E](handlers: Seq[PartialCommandHandler[C, S, E]]): CommandHandler[C, S, E] =
     val handler = (c: C) => (for (h <- handlers; f <- h.lift(c)) yield f).headOption
     (c, s, ctx) =>
       handler(c) match
         case Some(f) => f(s, ctx)
         case None    => IO.raiseError(EsException.UnhandledCommand(ctx.info.name, c.getClass.getCanonicalName))
 
-  def toCommandHandler[C, S, E, C2](
-    handlers: Seq[PartialCommandHandler[C2, S, E]],
-    mapper: C => C2
-  ): CommandHandler[C, S, E] = {
-    val f = toCommandHandler[C2, S, E](handlers)
-
-    (c, s, ctx) => f(mapper(c), s, ctx)
-  }
-
   import scala.reflect.ClassTag
-  def handlerFor[C, S, E, CC <: C: ClassTag](f: CommandHandler[CC, S, E]): PartialCommandHandler[C, S, E] =
+  def commandHandlerFor[C, S, E, C2 <: C: ClassTag](f: CommandHandler[C2, S, E]): PartialCommandHandler[C, S, E] =
     new PartialFunction[C, (S, CommandHandlerContext[S, E]) => IO[CommandOutput]] {
-      private val t = summon[ClassTag[CC]]
+      private val t = summon[ClassTag[C2]]
       override def isDefinedAt(c: C): Boolean =
         t.runtimeClass.isInstance(c)
       override def apply(c: C): (S, CommandHandlerContext[S, E]) => IO[CommandOutput] = (s, ctx) =>
