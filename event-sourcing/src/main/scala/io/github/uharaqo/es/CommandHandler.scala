@@ -4,10 +4,10 @@ import cats.effect.IO
 
 import scala.annotation.targetName
 
-trait CommandHandler[S, C, E]:
-  def apply(state: S, command: C, ctx: CommandHandlerContext[S, E]): IO[CommandOutput]
+trait CommandHandler[C, S, E]:
+  def apply(command: C, state: S, ctx: CommandHandlerContext[S, E]): IO[CommandOutput]
 
-type PartialCommandHandler[S, C, E] = PartialFunction[C, (S, CommandHandlerContext[S, E]) => IO[CommandOutput]]
+type PartialCommandHandler[C, S, E] = PartialFunction[C, (S, CommandHandlerContext[S, E]) => IO[CommandOutput]]
 
 type CommandHandlerContextFactory[S, E] = (AggId, Metadata, VersionedState[S]) => CommandHandlerContext[S, E]
 

@@ -14,9 +14,9 @@ object CommandProcessor {
 object PartialCommandProcessor {
   import cats.implicits.*
 
-  def apply[S, C, E](
+  def apply[C, S, E](
     stateInfo: StateInfo[S, E],
-    commandInfo: CommandInfo[S, C, E],
+    commandInfo: CommandInfo[C, S, E],
     stateLoader: StateLoader[S],
     stateLoaderFactory: StateLoaderFactory,
     eventWriter: EventWriter,
@@ -53,11 +53,11 @@ object PartialCommandProcessor {
 }
 
 object CommandTaskProvider {
-  def apply[S, C, E](commandInfo: CommandInfo[S, C, E]): CommandTaskProvider[S, E] =
+  def apply[C, S, E](commandInfo: CommandInfo[C, S, E]): CommandTaskProvider[S, E] =
     input =>
       Option.when(commandInfo.fqcn == input.command) {
         for command <- commandInfo.deserializer.convert(input.payload)
-        yield ctx => commandInfo.commandHandler(ctx.prevState.state, command, ctx)
+        yield ctx => commandInfo.commandHandler(command, ctx.prevState.state, ctx)
       }
 }
 

@@ -11,8 +11,6 @@ import io.github.uharaqo.es.grpc.server.save
 
 object UserAggregate {
 
-  type UserCommandHandler = PartialCommandHandler[User, UserCommand, UserEventMessage]
-
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
@@ -36,52 +34,42 @@ object UserAggregate {
     val EMPTY = User("", 0)
 
   // command handlers
-  lazy val commandHandler: Dependencies => CommandHandler[User, UserCommandMessage, UserEventMessage] =
-    Seq(registerUser, addPoint, sendPoint)
-      .traverse(identity)
-      .map(PartialCommandHandler.toCommandHandler(_, _.toUserCommand))
+  lazy val commandHandler: Dependencies => CommandHandler[UserCommandMessage, User, UserEventMessage] =
+    for handlers <- Seq(registerUser, addPoint, sendPoint).traverse(identity)
+    yield PartialCommandHandler.toCommandHandler(handlers, _.toUserCommand)
 
-  private val registerUser: Dependencies => UserCommandHandler = deps => {
-    case c: RegisterUser =>
-      (s, ctx) =>
-        s match
-          case User.EMPTY =>
-            ctx.save(UserRegistered(c.name))
+  private val hf = PartialCommandHandler.handlerFactory[UserCommand, User, UserEventMessage]
 
-          case _: User =>
-            ctx.fail(IllegalStateException("Already registered"))
-  }
+  private val registerUser = (d: Dependencies) =>
+    hf.handlerFor[RegisterUser] { (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.save(UserRegistered(c.name))
+        case _: User    => ctx.fail(IllegalStateException("Already registered"))
+    }
 
-  private val addPoint: Dependencies => UserCommandHandler = deps => {
-    case c: AddPoint =>
-      (s, ctx) =>
-        s match
-          case User.EMPTY =>
-            ctx.fail(IllegalStateException("User not found"))
+  private val addPoint = (d: Dependencies) =>
+    hf.handlerFor[AddPoint] { (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
+        case _: User    => ctx.save(PointAdded(c.point))
+    }
 
-          case _: User =>
-            ctx.save(PointAdded(c.point))
-  }
-
-  private val sendPoint: Dependencies => UserCommandHandler = deps => {
-    case c: SendPoint =>
-      (s, ctx) =>
-        s match
-          case User.EMPTY =>
-            ctx.fail(IllegalStateException("User not found"))
-
-          case s: User =>
-            if s.point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
-            else
-              val senderId = ctx.id
-              for
-                sent <- ctx.save(PointSent(c.recipientId, c.point))
-                received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
-                  if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
-                  else ctx2.save(PointReceived(senderId, c.point))
-                }
-              yield sent ++ received
-  }
+  private val sendPoint = (d: Dependencies) =>
+    hf.handlerFor[SendPoint] { (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
+        case s: User =>
+          if s.point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
+          else
+            val senderId = ctx.id
+            for
+              sent <- ctx.save(PointSent(c.recipientId, c.point))
+              received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
+                if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
+                else ctx2.save(PointReceived(senderId, c.point))
+              }
+            yield sent ++ received
+    }
 
   // event handler
   lazy val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>

@@ -14,10 +14,10 @@ case class CommandInput(
 )
 
 /** information related to the command handler */
-case class CommandInfo[S, C, E](
+case class CommandInfo[C, S, E](
   fqcn: Fqcn,
   deserializer: Deserializer[C],
-  commandHandler: CommandHandler[S, C, E],
+  commandHandler: CommandHandler[C, S, E],
 )
 
 /** facade that looks up a [[PartialCommandHandler]] and dispatch the input */

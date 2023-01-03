@@ -6,7 +6,7 @@ import munit.Assertions.*
 
 import java.nio.charset.StandardCharsets.UTF_8
 
-class CommandTester[S, C, E](
+class CommandTester[C, S, E](
   info: StateInfo[S, E],
   commandInputFactory: (AggId, C) => IO[CommandInput],
   processor: CommandProcessor,

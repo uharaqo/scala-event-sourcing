@@ -4,11 +4,11 @@ import cats.effect.IO
 
 import cats.implicits.*
 
-def debug[S, C, E](commandHandler: CommandHandler[S, C, E]): CommandHandler[S, C, E] =
-  (s, c, ctx) =>
+def debug[C, S, E](commandHandler: CommandHandler[C, S, E]): CommandHandler[C, S, E] =
+  (c, s, ctx) =>
     for
       _ <- IO.println(s"  Command: $c")
-      r <- commandHandler(s, c, ctx)
+      r <- commandHandler(c, s, ctx)
       _ <- IO.println(s"  Response: $r")
     yield r
 

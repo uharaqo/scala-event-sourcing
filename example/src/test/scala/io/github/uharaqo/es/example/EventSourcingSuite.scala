@@ -153,7 +153,7 @@ class TestSetup(val xa: Transactor[IO]) {
     stateInfo: StateInfo[S, E],
     commandMapper: C2 => C, // just to capture the type C2
     processors: Seq[PartialCommandProcessor],
-  ): CommandTester[S, C, E] =
+  ): CommandTester[C, S, E] =
     val processor = CommandProcessor(processors)
     val commandFactory =
       (id: AggId, c: C) =>

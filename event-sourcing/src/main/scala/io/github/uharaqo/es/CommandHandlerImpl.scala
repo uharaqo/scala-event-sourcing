@@ -49,19 +49,41 @@ object CommandHandlerContextFactory {
 }
 
 object PartialCommandHandler {
-  def toCommandHandler[S, C, E](handlers: Seq[PartialCommandHandler[S, C, E]]): CommandHandler[S, C, E] =
+  def toCommandHandler[C, S, E](handlers: Seq[PartialCommandHandler[C, S, E]]): CommandHandler[C, S, E] =
     val handler = (c: C) => (for (h <- handlers; f <- h.lift(c)) yield f).headOption
-    (s, c, ctx) =>
+    (c, s, ctx) =>
       handler(c) match
         case Some(f) => f(s, ctx)
         case None    => IO.raiseError(EsException.UnhandledCommand(ctx.info.name, c.getClass.getCanonicalName))
 
-  def toCommandHandler[S, C, E, C2](
-    handlers: Seq[PartialCommandHandler[S, C2, E]],
+  def toCommandHandler[C, S, E, C2](
+    handlers: Seq[PartialCommandHandler[C2, S, E]],
     mapper: C => C2
-  ): CommandHandler[S, C, E] = {
-    val f = toCommandHandler[S, C2, E](handlers)
+  ): CommandHandler[C, S, E] = {
+    val f = toCommandHandler[C2, S, E](handlers)
 
-    (s, c, ctx) => f(s, mapper(c), ctx)
+    (c, s, ctx) => f(mapper(c), s, ctx)
+  }
+
+  import scala.reflect.ClassTag
+  def handlerFactory[C, S, E] = new ABC[C, S, E] {}
+
+  def handlerFor[C, S, E, CC <: C: ClassTag](
+//    f: (CC, S, CommandHandlerContext[S, E]) => IO[CommandOutput]
+    f: CommandHandler[CC, S, E]
+  ): PartialCommandHandler[C, S, E] =
+    new PartialFunction[C, (S, CommandHandlerContext[S, E]) => IO[CommandOutput]] {
+      private val t = summon[ClassTag[CC]]
+      override def isDefinedAt(c: C): Boolean =
+        t.runtimeClass.isInstance(c)
+      override def apply(c: C): (S, CommandHandlerContext[S, E]) => IO[CommandOutput] = (s, ctx) =>
+        f(t.unapply(c).get, s, ctx)
+    }
+
+  trait ABC[C, S, E] {
+
+    import scala.reflect.ClassTag
+    def handlerFor[CC <: C: ClassTag](f: CommandHandler[CC, S, E]): PartialCommandHandler[C, S, E] =
+      PartialCommandHandler.handlerFor(f)
   }
 }
