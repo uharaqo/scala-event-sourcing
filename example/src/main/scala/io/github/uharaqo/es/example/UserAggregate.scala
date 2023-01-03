@@ -50,7 +50,7 @@ object UserAggregate {
     h.handlerFor[AddPoint] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
-        case _: User    => ctx.save(PointAdded(c.point))
+        case _: User    => ctx.save(ProductTypes.convert[AddPoint, PointAdded](c))
     }
 
   private val sendPoint =
@@ -62,7 +62,7 @@ object UserAggregate {
           else
             val senderId = ctx.id
             for
-              sent <- ctx.save(PointSent(c.recipientId, c.point))
+              sent <- ctx.save(ProductTypes.convert[SendPoint, PointSent](c))
               received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
                 if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
                 else ctx2.save(PointReceived(senderId, c.point))

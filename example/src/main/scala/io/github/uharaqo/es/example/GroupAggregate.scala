@@ -43,7 +43,7 @@ object GroupAggregate {
         case Group.EMPTY =>
           ctx.withState(UserAggregate.stateInfo, c.ownerId) >>= { (s2, ctx2) =>
             if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-            else ctx.save(GroupCreated(c.ownerId, c.name))
+            else ctx.save(ProductTypes.convert[CreateGroup, GroupCreated](c))
           }
         case _ =>
           ctx.fail(IllegalStateException("Already exists"))
@@ -60,7 +60,7 @@ object GroupAggregate {
           else
             ctx.withState(UserAggregate.stateInfo, c.userId) >>= { (s2, ctx2) =>
               if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-              else ctx.save(UserAdded(c.userId))
+              else ctx.save(ProductTypes.convert[AddUser, UserAdded](c))
             }
     }
 
