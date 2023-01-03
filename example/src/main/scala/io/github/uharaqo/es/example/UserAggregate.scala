@@ -11,8 +11,6 @@ import io.github.uharaqo.es.grpc.server.save
 
 object UserAggregate {
 
-  type UserCommandHandler = PartialCommandHandler[User, UserCommand, UserEventMessage]
-
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
 
@@ -36,72 +34,53 @@ object UserAggregate {
     val EMPTY = User("", 0)
 
   // command handlers
-  lazy val commandHandler: Dependencies => CommandHandler[User, UserCommandMessage, UserEventMessage] =
-    Seq(registerUser, addPoint, sendPoint)
-      .traverse(identity)
-      .map(PartialCommandHandler.toCommandHandler(_, _.toUserCommand))
+  private val h = AggregateHelper[UserCommand, User, UserEventMessage, Dependencies]
 
-  private val registerUser: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: RegisterUser =>
-        s match
-          case User.EMPTY =>
-            ctx.save(UserRegistered(c.name))
+  private lazy val commandHandler =
+    h.toCommandHandler[UserCommandMessage](_.toUserCommand, registerUser, addPoint, sendPoint)
 
-          case _: User =>
-            ctx.fail(IllegalStateException("Already registered"))
+  private val registerUser =
+    h.handlerFor[RegisterUser] { d => (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.save(UserRegistered(c.name))
+        case _: User    => ctx.fail(IllegalStateException("Already registered"))
     }
-  }
 
-  private val addPoint: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: AddPoint =>
-        s match
-          case User.EMPTY =>
-            ctx.fail(IllegalStateException("User not found"))
-
-          case _: User =>
-            ctx.save(PointAdded(c.point))
+  private val addPoint =
+    h.handlerFor[AddPoint] { d => (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
+        case _: User    => ctx.save(ProductTypes.convert[AddPoint, PointAdded](c))
     }
-  }
 
-  private val sendPoint: Dependencies => UserCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: SendPoint =>
-        s match
-          case User.EMPTY =>
-            ctx.fail(IllegalStateException("User not found"))
-
-          case s: User =>
-            if s.point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
-            else
-              val senderId = ctx.id
-              for
-                sent <- ctx.save(PointSent(c.recipientId, c.point))
-                received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
-                  if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
-                  else ctx2.save(PointReceived(senderId, c.point))
-                }
-              yield sent ++ received
+  private val sendPoint =
+    h.handlerFor[SendPoint] { d => (c, s, ctx) =>
+      s match
+        case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
+        case s: User =>
+          if s.point < c.point then ctx.fail(IllegalStateException("Point Shortage"))
+          else
+            val senderId = ctx.id
+            for
+              sent <- ctx.save(ProductTypes.convert[SendPoint, PointSent](c))
+              received <- ctx.withState(ctx.info, c.recipientId) >>= { (s2, ctx2) =>
+                if s2 == User.EMPTY then ctx2.fail(IllegalStateException("User not found"))
+                else ctx2.save(PointReceived(senderId, c.point))
+              }
+            yield sent ++ received
     }
-  }
 
   // event handler
-  lazy val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
-    e.toUserEvent.asNonEmpty.get match
+  private val eventHandler = h.eventHandler(_.toUserEvent.asNonEmpty) { (s, e) =>
+    e match
       case e: UserRegistered =>
         s match
           case User.EMPTY => User(e.name, 0).some
           case _          => throw EsException.UnexpectedException
 
-      case PointAdded(point, unknownFields) =>
-        s.copy(point = s.point + point).some
-
-      case PointSent(recipientId, point, unknownFields) =>
-        s.copy(point = s.point - point).some
-
-      case PointReceived(senderId, point, unknownFields) =>
-        s.copy(point = s.point + point).some
+      case e: PointAdded    => s.copy(point = s.point + e.point).some
+      case e: PointSent     => s.copy(point = s.point - e.point).some
+      case e: PointReceived => s.copy(point = s.point + e.point).some
   }
 
   // dependencies

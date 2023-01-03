@@ -3,14 +3,14 @@ package io.github.uharaqo.es.example
 import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
+import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
 import io.github.uharaqo.es.grpc.server.save
-import io.github.uharaqo.es.example.proto.*
-import io.github.uharaqo.es.example.proto.UserEvent.Empty
 
 object GroupAggregate {
 
-  type GroupCommandHandler = PartialCommandHandler[Group, GroupCommand, GroupEventMessage]
+  private val h = AggregateHelper[GroupCommand, Group, GroupEventMessage, Dependencies]
+
   implicit val eventMapper: GroupEvent => GroupEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage
 
@@ -18,7 +18,7 @@ object GroupAggregate {
     JsonCodec[GroupEventMessage]
 //      PbCodec[GroupEventMessage]
 
-  val stateInfo = StateInfo("group", Group.EMPTY, eventCodec, eventHandler)
+  lazy val stateInfo = StateInfo("group", Group.EMPTY, eventCodec, eventHandler)
 
   val commandInfo = (deps: Dependencies) =>
     CommandInfo(
@@ -34,52 +34,46 @@ object GroupAggregate {
     val EMPTY = Group("", "", Set.empty)
 
   // command handlers
-  lazy val commandHandler: Dependencies => CommandHandler[Group, GroupCommandMessage, GroupEventMessage] =
-    Seq(createGroup, addUser)
-      .traverse(identity)
-      .andThen(PartialCommandHandler.toCommandHandler(_, _.toGroupCommand))
+  private lazy val commandHandler =
+    h.toCommandHandler[GroupCommandMessage](_.toGroupCommand, createGroup, addUser)
 
-  private val createGroup: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: CreateGroup =>
-        s match
-          case Group.EMPTY =>
-            ctx.withState(UserAggregate.stateInfo, c.ownerId) >>= { (s2, ctx2) =>
+  private val createGroup =
+    h.handlerFor[CreateGroup] { d => (c, s, ctx) =>
+      s match
+        case Group.EMPTY =>
+          ctx.withState(UserAggregate.stateInfo, c.ownerId) >>= { (s2, ctx2) =>
+            if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
+            else ctx.save(ProductTypes.convert[CreateGroup, GroupCreated](c))
+          }
+        case _ =>
+          ctx.fail(IllegalStateException("Already exists"))
+    }
+
+  private val addUser =
+    h.handlerFor[AddUser] { d => (c, s, ctx) =>
+      s match
+        case Group.EMPTY =>
+          ctx.fail(IllegalStateException("Group not found"))
+
+        case Group(ownerId, name, users) =>
+          if users.contains(c.userId) then ctx.fail(IllegalStateException("Already a member"))
+          else
+            ctx.withState(UserAggregate.stateInfo, c.userId) >>= { (s2, ctx2) =>
               if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-              else ctx.save(GroupCreated(c.ownerId, c.name))
+              else ctx.save(ProductTypes.convert[AddUser, UserAdded](c))
             }
-          case _ =>
-            ctx.fail(IllegalStateException("Already exists"))
     }
-  }
-
-  private val addUser: Dependencies => GroupCommandHandler = deps => { (s, ctx) =>
-    {
-      case c: AddUser =>
-        s match
-          case Group.EMPTY =>
-            ctx.fail(IllegalStateException("Group not found"))
-
-          case Group(ownerId, name, users) =>
-            if users.contains(c.userId) then ctx.fail(IllegalStateException("Already a member"))
-            else
-              ctx.withState(UserAggregate.stateInfo, c.userId) >>= { (s2, ctx2) =>
-                if s2 == UserAggregate.User.EMPTY then ctx.fail(IllegalStateException("User not found"))
-                else ctx.save(UserAdded(c.userId))
-              }
-    }
-  }
 
   // event handler
-  lazy val eventHandler: EventHandler[Group, GroupEventMessage] = { (s, e) =>
-    e.toGroupEvent.asNonEmpty.get match
-      case GroupCreated(ownerId, name, unknownFields) =>
+  private val eventHandler = h.eventHandler(_.toGroupEvent.asNonEmpty) { (s, e) =>
+    e match
+      case e: GroupCreated =>
         s match
-          case Group.EMPTY => Group(ownerId, name, Set(ownerId)).some
+          case Group.EMPTY => Group(e.ownerId, e.name, Set(e.ownerId)).some
           case _           => None
 
-      case UserAdded(userId, unknownFields) =>
-        s.copy(users = s.users + userId).some
+      case e: UserAdded =>
+        s.copy(users = s.users + e.userId).some
   }
 
   // dependencies

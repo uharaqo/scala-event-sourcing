@@ -132,7 +132,7 @@ object TestSetup {
   def run(task: TestSetup => Resource[IO, Unit]) =
     (for
       xa <- H2TransactorFactory.create()
-      // xa <- PostgresTransactorFactory.create()
+//      xa <- PostgresTransactorFactory.create()
       _ <- Resource.eval(DoobieEventRepository(xa).initTables())
 
       _ <- task(new TestSetup(xa))
@@ -153,7 +153,7 @@ class TestSetup(val xa: Transactor[IO]) {
     stateInfo: StateInfo[S, E],
     commandMapper: C2 => C, // just to capture the type C2
     processors: Seq[PartialCommandProcessor],
-  ): CommandTester[S, C, E] =
+  ): CommandTester[C, S, E] =
     val processor = CommandProcessor(processors)
     val commandFactory =
       (id: AggId, c: C) =>
@@ -162,7 +162,7 @@ class TestSetup(val xa: Transactor[IO]) {
           val last  = p.typeUrl.split('/').last
           val array = p.value.toByteArray()
           val metadata =
-            new SimpleMetadata(
+            new DefaultMetadata(
               Map(Metadata.Key.StringKey("request-id") -> UUID.randomUUID().toString.getBytes(StandardCharsets.UTF_8))
             )
           CommandInput(stateInfo.name, id, last, array, metadata)

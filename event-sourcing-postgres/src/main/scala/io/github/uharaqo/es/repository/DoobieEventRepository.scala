@@ -27,17 +27,17 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
   def initTables(): IO[Unit] =
     Seq(CREATE_EVENTS_TABLE, CREATE_PROJECTION_TABLE).traverse(_.update.run).transact(xa).void
 
-  override def write(records: EventRecords) =
+  override def write(output: CommandOutput) =
     // PK: (name, id, ver) prevents conflicts
-    Update[(AggName, AggId, Version, Bytes)](INSERT_EVENT)
-      .updateMany(records.map(r => (r.name, r.id, r.version, r.event)))
+    Update[EventOutput](INSERT_EVENT)
+      .updateMany(output.events)
       .transact(xa)
       // Return false on a PK conflict
       .attemptSomeSqlState { case sqlstate.class23.UNIQUE_VIOLATION => false }
       // throw error on any other exceptions
       .handleErrorWith(t => IO.raiseError(EsException.EventStoreFailure(t)))
       // Return true if all the records were applied or there was no record
-      .map(z => z.map(_ == records.size).fold(b => true, b => b))
+      .map(z => z.map(_ == output.events.size).fold(b => true, b => b))
 
   override def queryById(name: AggName, id: AggId, previousVersion: Version): Stream[IO, VersionedEvent] =
     SELECT_EVENTS(name, id, previousVersion)
@@ -47,7 +47,7 @@ class DoobieEventRepository(xa: Transactor[IO]) extends EventRepository, Project
       .handleErrorWith(t => Stream.raiseError(EsException.EventLoadFailure(t)))
 
   override def queryByName(query: EventQuery): Stream[IO, EventRecord] =
-    SELECT_EVENTS_BY_RESOURCE(query.name, query.lastSeqId).query[EventRecord].stream.transact(xa)
+    SELECT_EVENTS_BY_NAME(query.name, query.lastSeqId).query[EventRecord].stream.transact(xa)
 
   override def runWithLock(projectionId: ProjectionId)(task: SeqId => IO[Option[SeqId]]): IO[Boolean] =
     WeakAsync
@@ -98,7 +98,7 @@ object DoobieEventRepository {
     (name: AggName, id: AggId, prevVer: Version) =>
       sql"""SELECT ver, event FROM events WHERE name = $name AND id = $id AND ver > $prevVer ORDER BY ver"""
 
-  private val SELECT_EVENTS_BY_RESOURCE =
+  private val SELECT_EVENTS_BY_NAME =
     (name: AggName, prevSeq: SeqId) =>
       sql"""SELECT name, id, ver, seq, event FROM events WHERE name = $name AND $prevSeq < seq ORDER BY seq"""
 

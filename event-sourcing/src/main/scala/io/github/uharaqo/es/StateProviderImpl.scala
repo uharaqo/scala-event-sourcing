@@ -56,8 +56,8 @@ class CachedStateLoaderFactory(
           _        <- stateCache.set(id, v)
         yield v
 
-      override def onSuccess(id: AggId, prevState: VersionedState[S], records: EventRecords): IO[Unit] =
-        info.nextState(Some(prevState), Stream(records.map(r => VersionedEvent(r.version, r.event))*))
+      override def onSuccess(id: AggId, prevState: VersionedState[S], output: CommandOutput): IO[Unit] =
+        info.nextState(Some(prevState), Stream(output.events.map(r => VersionedEvent(r.version, r.event))*))
           >>= { stateCache.set(id, _) }
     )
   }
