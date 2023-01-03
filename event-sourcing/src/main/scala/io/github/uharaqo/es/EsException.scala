@@ -23,4 +23,6 @@ object EsException:
 
   final case class EventLoadFailure(t: Throwable) extends EsException("Failed to load event", t.some)
 
+  final case class EventHandlerFailure(t: Throwable) extends EsException("Failed to handle event", t.some)
+
   case object UnexpectedException extends EsException(s"Unexpected Exception", none)

@@ -1,22 +1,19 @@
 package io.github.uharaqo.es.example
 
-import cats.effect.*
 import cats.implicits.*
 import io.github.uharaqo.es.*
-import io.github.uharaqo.es.Metadata.Key.StringKey
-import io.github.uharaqo.es.example.UserAggregate.Dependencies
 import io.github.uharaqo.es.example.proto.*
 import io.github.uharaqo.es.grpc.codec.{JsonCodec, PbCodec}
 import io.github.uharaqo.es.grpc.server.save
 
 object UserAggregate {
 
+  private val h  = AggregateHelper[UserCommandMessage, User, UserEventMessage, Dependencies]
+  private val h2 = h.convert[UserCommand](_.toUserCommand)
+
   implicit val eventMapper: UserEvent => UserEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: UserCommand => UserCommandMessage = PbCodec.toPbMessage
-
-  implicit val eventCodec: Codec[UserEventMessage] =
-    JsonCodec[UserEventMessage]
-//    PbCodec[UserEventMessage]
+  implicit val eventCodec: Codec[UserEventMessage] = JsonCodec[UserEventMessage] //    PbCodec[UserEventMessage]
 
   lazy val stateInfo = StateInfo("user", User.EMPTY, eventCodec, eventHandler)
 
@@ -34,27 +31,24 @@ object UserAggregate {
     val EMPTY = User("", 0)
 
   // command handlers
-  private val h = AggregateHelper[UserCommand, User, UserEventMessage, Dependencies]
-
-  private lazy val commandHandler =
-    h.toCommandHandler[UserCommandMessage](_.toUserCommand, registerUser, addPoint, sendPoint)
+  private lazy val commandHandler = h2.commandHandler(registerUser, addPoint, sendPoint)
 
   private val registerUser =
-    h.handlerFor[RegisterUser] { d => (c, s, ctx) =>
+    h2.commandHandlerFor[RegisterUser] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.save(UserRegistered(c.name))
         case _: User    => ctx.fail(IllegalStateException("Already registered"))
     }
 
   private val addPoint =
-    h.handlerFor[AddPoint] { d => (c, s, ctx) =>
+    h2.commandHandlerFor[AddPoint] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
         case _: User    => ctx.save(ProductTypes.convert[AddPoint, PointAdded](c))
     }
 
   private val sendPoint =
-    h.handlerFor[SendPoint] { d => (c, s, ctx) =>
+    h2.commandHandlerFor[SendPoint] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
         case s: User =>
@@ -71,16 +65,17 @@ object UserAggregate {
     }
 
   // event handler
-  private val eventHandler = h.eventHandler(_.toUserEvent.asNonEmpty) { (s, e) =>
-    e match
+  private val eventHandler = h.eventHandler { (s, e) =>
+    e.toUserEvent match
       case e: UserRegistered =>
         s match
-          case User.EMPTY => User(e.name, 0).some
+          case User.EMPTY => User(e.name, 0)
           case _          => throw EsException.UnexpectedException
 
-      case e: PointAdded    => s.copy(point = s.point + e.point).some
-      case e: PointSent     => s.copy(point = s.point - e.point).some
-      case e: PointReceived => s.copy(point = s.point + e.point).some
+      case e: PointAdded    => s.copy(point = s.point + e.point)
+      case e: PointSent     => s.copy(point = s.point - e.point)
+      case e: PointReceived => s.copy(point = s.point + e.point)
+      case _                => throw EsException.UnexpectedException
   }
 
   // dependencies

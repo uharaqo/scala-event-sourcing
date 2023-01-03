@@ -14,44 +14,54 @@ class CommandTester[C, S, E](
 ) {
   import cats.implicits.*
 
-  def command[CS](id: AggId, c: CS)(implicit mapper: CS => C): IO[CommandOutput] =
+  def command[CS](id: AggId, c: CS)(using mapper: CS => C): CommandValidator[C, S, E] =
     command(id, mapper(c))
 
-  def command(id: AggId, c: C): IO[CommandOutput] =
-    commandInputFactory(id, c) >>= command
+  def command(id: AggId, c: C): CommandValidator[C, S, E] =
+    CommandValidator(commandInputFactory(id, c) >>= process, info, stateLoaderFactory)
 
-  def command(input: CommandInput): IO[CommandOutput] =
+  private def process(input: CommandInput): IO[CommandOutput] =
     processor(input)
+}
 
-  extension (output: IO[CommandOutput]) {
-    def events(events: E*): IO[CommandOutput] =
-      validateEvents(events)
+class CommandValidator[C, S, E](
+  output: IO[CommandOutput],
+  stateInfo: StateInfo[S, E],
+  stateLoaderFactory: StateLoaderFactory
+) {
+  import cats.implicits.*
 
-    def events[ES](events: ES*)(implicit mapper: ES => E): IO[CommandOutput] =
-      validateEvents(events.map(mapper))
+  def events(events: E*): CommandValidator[C, S, E] =
+    validateEvents(events)
 
-    private def validateEvents(events: Seq[E]) =
+  def events[ES](events: ES*)(using mapper: ES => E): CommandValidator[C, S, E] =
+    validateEvents(events.map(mapper))
+
+  private def validateEvents(events: Seq[E]): CommandValidator[C, S, E] =
+    CommandValidator(
       for
         v  <- output
-        es <- v.events.traverse(r => info.eventCodec.convert(r.event))
+        es <- v.events.traverse(r => stateInfo.eventCodec.convert(r.event))
         _ = assertEquals(es, events)
-      yield v
+      yield v,
+      stateInfo,
+      stateLoaderFactory
+    )
 
-    def states(states: (AggId, S)*): IO[CommandOutput] =
-      for
-        v           <- output
-        stateLoader <- stateLoaderFactory(info)
-        ss          <- states.traverse(e => stateLoader.load(e._1))
-        _ = assertEquals(ss.map(_.state), states.map(_._2))
-      yield v
+  def states(states: (AggId, S)*) =
+    for
+      v           <- output
+      stateLoader <- stateLoaderFactory(stateInfo)
+      ss          <- states.traverse(e => stateLoader.load(e._1))
+      _ = assertEquals(ss.map(_.state), states.map(_._2))
+    yield v
 
-    def failsBecause(message: String): IO[Unit] =
-      output.attempt.map {
-        case Left(t) =>
-          val e = intercept[EsException.CommandHandlerFailure](throw t)
-          assertEquals(e.getCause.getMessage, message)
-        case _ =>
-          intercept[EsException.CommandHandlerFailure](())
-      }
-  }
+  def failsBecause(message: String) =
+    output.attempt.map {
+      case Left(t) =>
+        val e = intercept[EsException.CommandHandlerFailure](throw t)
+        assertEquals(e.getCause().getMessage(), message)
+      case _ =>
+        intercept[EsException.CommandHandlerFailure](())
+    }
 }
