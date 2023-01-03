@@ -48,6 +48,29 @@ object CommandHandlerContextFactory {
     new DefaultCommandHandlerContext[S, E](stateInfo, id, metadata, prevState, stateLoaderFactory)
 }
 
+trait AggregateHelper[C, S, E, D] {
+
+  import scala.reflect.ClassTag
+  def handlerFor[CC <: C: ClassTag](f: D => CommandHandler[CC, S, E]): D => PartialCommandHandler[C, S, E] =
+    (d: D) => PartialCommandHandler.handlerFor(f(d))
+
+  def toCommandHandler[C0](
+    mapper: C0 => C,
+    handlers: (D => PartialCommandHandler[C, S, E])*
+  ): D => CommandHandler[C0, S, E] =
+    import cats.implicits.*
+    for hs <- handlers.traverse(identity)
+    yield PartialCommandHandler.toCommandHandler(hs, mapper)
+
+  def eventHandler[E1](mapper: E => Option[E1] = e => Some(e))(f: (S, E1) => Option[S]): EventHandler[S, E] = {
+    (s, e) => mapper(e).flatMap(f(s, _))
+  }
+}
+
+object AggregateHelper {
+  def apply[C, S, E, D] = new AggregateHelper[C, S, E, D] {}
+}
+
 object PartialCommandHandler {
   def toCommandHandler[C, S, E](handlers: Seq[PartialCommandHandler[C, S, E]]): CommandHandler[C, S, E] =
     val handler = (c: C) => (for (h <- handlers; f <- h.lift(c)) yield f).headOption
@@ -66,12 +89,7 @@ object PartialCommandHandler {
   }
 
   import scala.reflect.ClassTag
-  def handlerFactory[C, S, E] = new ABC[C, S, E] {}
-
-  def handlerFor[C, S, E, CC <: C: ClassTag](
-//    f: (CC, S, CommandHandlerContext[S, E]) => IO[CommandOutput]
-    f: CommandHandler[CC, S, E]
-  ): PartialCommandHandler[C, S, E] =
+  def handlerFor[C, S, E, CC <: C: ClassTag](f: CommandHandler[CC, S, E]): PartialCommandHandler[C, S, E] =
     new PartialFunction[C, (S, CommandHandlerContext[S, E]) => IO[CommandOutput]] {
       private val t = summon[ClassTag[CC]]
       override def isDefinedAt(c: C): Boolean =
@@ -79,11 +97,4 @@ object PartialCommandHandler {
       override def apply(c: C): (S, CommandHandlerContext[S, E]) => IO[CommandOutput] = (s, ctx) =>
         f(t.unapply(c).get, s, ctx)
     }
-
-  trait ABC[C, S, E] {
-
-    import scala.reflect.ClassTag
-    def handlerFor[CC <: C: ClassTag](f: CommandHandler[CC, S, E]): PartialCommandHandler[C, S, E] =
-      PartialCommandHandler.handlerFor(f)
-  }
 }

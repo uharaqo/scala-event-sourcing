@@ -9,6 +9,8 @@ import io.github.uharaqo.es.grpc.server.save
 
 object GroupAggregate {
 
+  private val h = AggregateHelper[GroupCommand, Group, GroupEventMessage, Dependencies]
+
   implicit val eventMapper: GroupEvent => GroupEventMessage       = PbCodec.toPbMessage
   implicit val commandMapper: GroupCommand => GroupCommandMessage = PbCodec.toPbMessage
 
@@ -16,7 +18,7 @@ object GroupAggregate {
     JsonCodec[GroupEventMessage]
 //      PbCodec[GroupEventMessage]
 
-  val stateInfo = StateInfo("group", Group.EMPTY, eventCodec, eventHandler)
+  lazy val stateInfo = StateInfo("group", Group.EMPTY, eventCodec, eventHandler)
 
   val commandInfo = (deps: Dependencies) =>
     CommandInfo(
@@ -32,14 +34,11 @@ object GroupAggregate {
     val EMPTY = Group("", "", Set.empty)
 
   // command handlers
-  lazy val commandHandler: Dependencies => CommandHandler[GroupCommandMessage, Group, GroupEventMessage] =
-    for handlers <- Seq(createGroup, addUser).traverse(identity)
-    yield PartialCommandHandler.toCommandHandler(handlers, _.toGroupCommand)
+  private lazy val commandHandler =
+    h.toCommandHandler[GroupCommandMessage](_.toGroupCommand, createGroup, addUser)
 
-  private val hf = PartialCommandHandler.handlerFactory[GroupCommand, Group, GroupEventMessage]
-
-  private val createGroup = (d: Dependencies) =>
-    hf.handlerFor[CreateGroup] { (c, s, ctx) =>
+  private val createGroup =
+    h.handlerFor[CreateGroup] { d => (c, s, ctx) =>
       s match
         case Group.EMPTY =>
           ctx.withState(UserAggregate.stateInfo, c.ownerId) >>= { (s2, ctx2) =>
@@ -50,8 +49,8 @@ object GroupAggregate {
           ctx.fail(IllegalStateException("Already exists"))
     }
 
-  private val addUser = (d: Dependencies) =>
-    hf.handlerFor[AddUser] { (c, s, ctx) =>
+  private val addUser =
+    h.handlerFor[AddUser] { d => (c, s, ctx) =>
       s match
         case Group.EMPTY =>
           ctx.fail(IllegalStateException("Group not found"))
@@ -66,15 +65,15 @@ object GroupAggregate {
     }
 
   // event handler
-  lazy val eventHandler: EventHandler[Group, GroupEventMessage] = { (s, e) =>
-    e.toGroupEvent.asNonEmpty.get match
-      case GroupCreated(ownerId, name, unknownFields) =>
+  private val eventHandler = h.eventHandler(_.toGroupEvent.asNonEmpty) { (s, e) =>
+    e match
+      case e: GroupCreated =>
         s match
-          case Group.EMPTY => Group(ownerId, name, Set(ownerId)).some
+          case Group.EMPTY => Group(e.ownerId, e.name, Set(e.ownerId)).some
           case _           => None
 
-      case UserAdded(userId, unknownFields) =>
-        s.copy(users = s.users + userId).some
+      case e: UserAdded =>
+        s.copy(users = s.users + e.userId).some
   }
 
   // dependencies

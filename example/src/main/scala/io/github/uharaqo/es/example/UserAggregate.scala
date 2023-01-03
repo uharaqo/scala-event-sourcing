@@ -34,28 +34,27 @@ object UserAggregate {
     val EMPTY = User("", 0)
 
   // command handlers
-  lazy val commandHandler: Dependencies => CommandHandler[UserCommandMessage, User, UserEventMessage] =
-    for handlers <- Seq(registerUser, addPoint, sendPoint).traverse(identity)
-    yield PartialCommandHandler.toCommandHandler(handlers, _.toUserCommand)
+  private val h = AggregateHelper[UserCommand, User, UserEventMessage, Dependencies]
 
-  private val hf = PartialCommandHandler.handlerFactory[UserCommand, User, UserEventMessage]
+  private lazy val commandHandler =
+    h.toCommandHandler[UserCommandMessage](_.toUserCommand, registerUser, addPoint, sendPoint)
 
-  private val registerUser = (d: Dependencies) =>
-    hf.handlerFor[RegisterUser] { (c, s, ctx) =>
+  private val registerUser =
+    h.handlerFor[RegisterUser] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.save(UserRegistered(c.name))
         case _: User    => ctx.fail(IllegalStateException("Already registered"))
     }
 
-  private val addPoint = (d: Dependencies) =>
-    hf.handlerFor[AddPoint] { (c, s, ctx) =>
+  private val addPoint =
+    h.handlerFor[AddPoint] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
         case _: User    => ctx.save(PointAdded(c.point))
     }
 
-  private val sendPoint = (d: Dependencies) =>
-    hf.handlerFor[SendPoint] { (c, s, ctx) =>
+  private val sendPoint =
+    h.handlerFor[SendPoint] { d => (c, s, ctx) =>
       s match
         case User.EMPTY => ctx.fail(IllegalStateException("User not found"))
         case s: User =>
@@ -72,21 +71,16 @@ object UserAggregate {
     }
 
   // event handler
-  lazy val eventHandler: EventHandler[User, UserEventMessage] = { (s, e) =>
-    e.toUserEvent.asNonEmpty.get match
+  private val eventHandler = h.eventHandler(_.toUserEvent.asNonEmpty) { (s, e) =>
+    e match
       case e: UserRegistered =>
         s match
           case User.EMPTY => User(e.name, 0).some
           case _          => throw EsException.UnexpectedException
 
-      case PointAdded(point, unknownFields) =>
-        s.copy(point = s.point + point).some
-
-      case PointSent(recipientId, point, unknownFields) =>
-        s.copy(point = s.point - point).some
-
-      case PointReceived(senderId, point, unknownFields) =>
-        s.copy(point = s.point + point).some
+      case e: PointAdded    => s.copy(point = s.point + e.point).some
+      case e: PointSent     => s.copy(point = s.point - e.point).some
+      case e: PointReceived => s.copy(point = s.point + e.point).some
   }
 
   // dependencies
